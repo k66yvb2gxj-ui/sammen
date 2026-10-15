@@ -51,7 +51,8 @@ jobs:
         run: npm run build:collaboration
 
       - name: Prepare bundled Node and Remote Desktop Commander
-        run: npm run prepare:remote
+        # Keep this in the runner's PowerShell 7; the npm script starts legacy Windows PowerShell.
+        run: ./scripts/prepare-remote-device.ps1
 
       - name: Build per-user installer and portable ZIP
         run: >-
