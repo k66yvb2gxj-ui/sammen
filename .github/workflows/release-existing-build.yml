@@ -263,7 +263,7 @@ jobs:
               release_id = release["id"]
               title, notes = release.get("name"), release.get("body")
               if release["target_commitish"] != head:
-                  release = api("PATCH", f"repos/{repo}/releases/{release_id}", {"target_commitish": head})
+                  release = api("PATCH", f"repos/{repo}/releases/{release_id}", {"target_commitish": head, "tag_name": tag})
               draft(release, tag)
               require(release["target_commitish"] == head and release.get("name") == title and release.get("body") == notes,
                       "Draft target, title or notes do not match the expected state.")
