@@ -110,14 +110,28 @@ jobs:
 
       # Drafts keep the unsigned pilot build out of the public update channel
       # until the installer and data migration have been checked on a second PC.
-      - name: Create draft release with packages
+      - name: Create draft only when the release is missing
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
         run: |
-          gh release create "$GITHUB_REF_NAME" release-assets/* \
-            --verify-tag \
-            --title "Sammen $GITHUB_REF_NAME" \
-            --generate-notes \
-            --draft
+          set -euo pipefail
+          sammen_headers="$(mktemp)"
+          sammen_errors="$(mktemp)"
+          trap 'rm -f -- "$sammen_headers" "$sammen_errors"' EXIT
+
+          if gh api --include --silent --method GET \
+            "repos/$GH_REPO/releases/tags/$GITHUB_REF_NAME" >"$sammen_headers" 2>"$sammen_errors"; then
+            printf 'Release %s already exists; keeping its assets and publication status.\n' "$GITHUB_REF_NAME"
+          elif grep -Eq '^HTTP/[[:digit:].]+[[:space:]]+404([[:space:]]|$)' "$sammen_headers"; then
+            gh release create "$GITHUB_REF_NAME" release-assets/* \
+              --verify-tag \
+              --title "Sammen $GITHUB_REF_NAME" \
+              --generate-notes \
+              --draft
+          else
+            cat "$sammen_errors" >&2
+            printf 'Release lookup failed; no release or assets were changed.\n' >&2
+            exit 1
+          fi
