@@ -16,6 +16,7 @@
     "pack": "electron-builder --win --dir --x64"
   },
   "dependencies": {
+    "electron-updater": "6.8.10",
     "fast-xml-parser": "5.11.2",
     "jose": "6.2.12",
     "mammoth": "1.13.0",
@@ -72,11 +73,23 @@
       "allowToChangeInstallationDirectory": false,
       "createDesktopShortcut": true
     },
-    "artifactName": "Sammen-Windows-${version}.${ext}"
+    "artifactName": "Sammen-Windows-${version}.${ext}",
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "k66yvb2gxj-ui",
+        "repo": "sammen",
+        "releaseType": "draft"
+      }
+    ]
   },
   "overrides": {
     "mammoth": {
       "argparse": "2.0.1"
     }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/k66yvb2gxj-ui/sammen.git"
   }
 }

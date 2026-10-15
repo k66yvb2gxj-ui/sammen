@@ -5,11 +5,44 @@
   let panel, toggle, nodes, open = false, projectId = null, lastMainProject;
   let settings = null, models = [], loading = false, accountBusy = false, modelBusy = false;
   let accountError = '', active = null, listSignature = '', contextSignature = '', messageSignature = '';
+  const draftStoragePrefix = 'sammen.sidechat.drafts.v1:';
 
   function sandbox() { return document.body.classList.contains('sandbox'); }
   function project() { return state.projects.find(value => value.id === projectId); }
+  function restoreSession(id) {
+    const value = { chatId: null, drafts: new Map(), sources: new Set(), error: '', storageError: '' };
+    if (!id) return value;
+    try {
+      const saved = JSON.parse(localStorage.getItem(draftStoragePrefix + encodeURIComponent(id)) || 'null');
+      if (saved?.version !== 1 || !Array.isArray(saved.drafts)) return value;
+      if (typeof saved.chatId === 'string') value.chatId = saved.chatId;
+      for (const entry of saved.drafts) {
+        if (Array.isArray(entry) && typeof entry[0] === 'string' && typeof entry[1] === 'string' && entry[1].length <= 12000) value.drafts.set(entry[0], entry[1]);
+      }
+    } catch { value.storageError = 'Kunne ikke hente utkastet fra denne PC-en.'; }
+    return value;
+  }
+  function persistSession(id, value, strict = false) {
+    if (!id) return;
+    try {
+      const drafts = new Map(value.drafts);
+      // Keep an unanswered message recoverable if an update closes the app mid-response.
+      if (active?.projectId === id && !drafts.get(active.chatId || 'new')) drafts.set(active.chatId || 'new', active.pending);
+      const saved = { version: 1, chatId: value.chatId, drafts: [...drafts].filter(([, text]) => text) };
+      const key = draftStoragePrefix + encodeURIComponent(id);
+      if (saved.drafts.length) localStorage.setItem(key, JSON.stringify(saved));
+      else localStorage.removeItem(key);
+      value.storageError = '';
+    } catch {
+      value.storageError = 'Utkastet kunne ikke lagres på denne PC-en. Behold appen åpen og kopier teksten før du oppdaterer.';
+      if (strict) throw new Error(value.storageError);
+    }
+  }
+  function prepareForUpdate() {
+    for (const [id, value] of sessions) persistSession(id, value, true);
+  }
   function session() {
-    if (!sessions.has(projectId)) sessions.set(projectId, { chatId: null, drafts: new Map(), sources: new Set(), error: '' });
+    if (!sessions.has(projectId)) sessions.set(projectId, restoreSession(projectId));
     return sessions.get(projectId);
   }
   function current() { return state.chats.find(chat => chat.id === session().chatId && chat.projectId === projectId); }
@@ -45,6 +78,7 @@
     nodes.history = el('select', { id: 'sidechat-history', 'aria-label': 'Velg samtale', onchange: event => {
       session().chatId = event.target.value || null;
       session().error = '';
+      persistSession(projectId, session());
       messageSignature = '';
       update();
     } });
@@ -52,6 +86,7 @@
       const value = session();
       if (!value.chatId) return nodes.draft.focus();
       value.chatId = null; value.error = '';
+      persistSession(projectId, value);
       messageSignature = '';
       update(); nodes.draft.focus();
     }, 'button-quiet sidechat-icon', 'add', { title: 'Ny samtale', 'aria-label': 'Ny samtale' });
@@ -84,6 +119,7 @@
     const context = el('details', { class: 'sidechat-context' }, nodes.sourceSummary, el('p', { class: 'sidechat-help' }, 'Bare valgte filer sendes. Opptil 30 per melding.'), nodes.sources);
     nodes.draft = el('textarea', { id: 'sidechat-draft', rows: 3, maxlength: 12000, 'aria-label': 'Melding til ChatGPT', placeholder: 'Spør om noe …', oninput: event => {
       session().drafts.set(draftKey(), event.target.value);
+      persistSession(projectId, session());
       updateControls();
     }, onkeydown: event => {
       if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); send(); }
@@ -237,8 +273,8 @@
       if (value) value.chatId = active.chatId;
       selectProject(active.projectId);
     }, 'button-text button-small'));
-    nodes.error.textContent = session().error;
-    nodes.error.hidden = !session().error;
+    nodes.error.textContent = session().error || session().storageError;
+    nodes.error.hidden = !nodes.error.textContent;
   }
   async function send() {
     if (!project() || !draft().trim() || !ready() || active || accountBusy || loading || modelBusy) return;
@@ -246,7 +282,7 @@
     const sourceIds = [...value.sources];
     const job = { projectId: originProject, chatId: value.chatId, pending: message, text: '', starting: true, cancelling: false };
     value.drafts.set(oldDraftKey, '');
-    active = job; value.error = ''; update();
+    active = job; value.error = ''; persistSession(originProject, value); update();
     try {
       if (!job.chatId) {
         const oldIds = new Set(state.chats.map(chat => chat.id));
@@ -259,6 +295,7 @@
         if (value.chatId === null) value.chatId = created.id;
         value.drafts.set(created.id, value.drafts.get(oldDraftKey) || '');
         value.drafts.delete(oldDraftKey);
+        persistSession(originProject, value);
         applyState(response);
       }
       const selected = state.chats.find(chat => chat.id === job.chatId && chat.projectId === originProject);
@@ -277,6 +314,7 @@
       if (!value.drafts.get(key)) value.drafts.set(key, message);
     } finally {
       if (active === job) active = null;
+      persistSession(originProject, value);
       messageSignature = '';
       update();
     }
@@ -299,5 +337,5 @@
     if (!open) return;
     renderSelectors(); renderAccount(); renderSources(); renderMessages(); updateControls();
   }
-  window.SammenSidechat = Object.freeze({ update, open: () => { init(); setOpen(true); } });
+  window.SammenSidechat = Object.freeze({ update, prepareForUpdate, open: () => { init(); setOpen(true); } });
 })();

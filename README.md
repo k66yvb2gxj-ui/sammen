@@ -4,7 +4,7 @@ Et felles arbeidsrom for prosjekter, notater, tankekart, kilder, flashcards og q
 
 ## Bruk appen
 
-Windows-pakken bygges som en installer for den innloggede brukeren og en portabel ZIP. For ZIP: pakk ut alle filene og åpne `Sammen.exe`. Ingen separat Node-installasjon kreves. Egne data lagres i Windows-brukerens Sammen-appdatamappe. Desktop-appen starter med et tomt prosjekt; sandboxen bruker separate demonstrasjonsdata.
+Windows-pakken bygges som en installer for den innloggede brukeren og en portabel ZIP. Installer `.exe`-pakken for å få automatiske oppdateringer. For ZIP: pakk ut alle filene og åpne `Sammen.exe`; denne varianten oppdateres manuelt. Ingen separat Node-installasjon kreves. Egne data lagres i Windows-brukerens Sammen-appdatamappe. Desktop-appen starter med et tomt prosjekt; sandboxen bruker separate demonstrasjonsdata.
 
 - **Brain:** Prosjektene har hver sitt område i en zoombar graf. Klikk på en sirkel for å åpne filen. Rull for å zoome, dra bakgrunnen for å flytte visningen, eller bruk +/−/Tilpass. Prosjekttitlene fader ved nærzoom. Dobbeltklikk på et tomt sted for å få opp knapper for et nytt prosjekt.
 - **Tankekart:** Jevn zoom og direkte redigering på lerretet. Tab lager underpunkt, Enter lager sidepunkt, og dobbeltklikk/F2 redigerer tekst. Punkter kan flyttes, skjules, kobles og formateres. Ctrl+S lagrer også aktiv punkttekst.
@@ -31,12 +31,14 @@ Under **Profil → Denne PC-en** kan brukeren eksplisitt starte den medfølgende
 
 ## Nye versjoner
 
-Fra 0.4.0 sjekker desktop-appen etter en nyere, publisert stabil GitHub Release ved oppstart. **Profil → Oppdateringer** gir en manuell sjekk. **Last ned** åpner utgivelsessiden; brukeren laster ned og åpner pakken selv. Automatisk nedlasting eller installasjon er ikke aktivert. Den eksisterende ZIP-versjonen 0.3.0 må oppgraderes manuelt én gang for å få denne sjekken.
+Fra 0.4.0 sjekker den installerte Windows-appen etter en nyere, publisert stabil GitHub Release og laster den ned automatisk. `electron-updater` kontrollerer nedlastingen mot SHA-512 i oppdateringsmetadataene. Når pakken er klar, installeres den ved normal avslutning, eller brukeren kan velge **Start på nytt og oppdater**. Før avslutning ber appen redigeringsvinduet lagre arbeidet og stopper fjernagenten og samarbeidsforbindelsen.
 
-GitHub Actions tester og bygger en installer for én bruker samt ZIP når en versjonstagg pushes. Utgivelsen opprettes som et utkast for kontroll før publisering. Produksjonsutgivelser skal kodesigneres; sertifikat og signeringsjobb er ikke konfigurert nå. Automatisk installasjon med `electron-updater` er videre arbeid. Se [docs/UPDATES.md](docs/UPDATES.md).
+Den eksisterende ZIP-versjonen 0.3.0 kan ikke oppdatere seg selv. Disse brukerne må installere 0.4.0 med `.exe` én gang. Nyere ZIP-versjoner og sandboxen har bare oppdateringssjekk eller manuell nedlasting; grunnen vises under **Profil → Oppdateringer**.
+
+GitHub Actions beholder installer, ZIP, `latest.yml` og `.exe.blockmap`. Nye utgivelser opprettes som utkast for kontroll; eksisterende utgivelser og filer beholdes. Piloten er ikke kodesignert, og ingen signeringstjeneste er valgt. SHA-512 erstatter ikke en verifisert utgiversignatur. En full oppgradering med den ferdige installeren er ennå ikke verifisert. Se [docs/UPDATES.md](docs/UPDATES.md).
 
 ## Utvikling og kontroll
 
 Bruk Node.js 22.23.3 og npm. Kjør `npm ci`, `npm run build:collaboration`, `npm test` og `npm start`. Før Windows-bygg: `npm run prepare:remote` og `npm run build`. Fjernagenten låses til Desktop Commander 0.3.0 med offisiell Node-runtime og SHA-256-kontroll av Node-arkivet. Browser-bundelen og fjernagenten beholder tredjepartslisensene sine.
 
-88 automatiserte tester er bestått. Samarbeid er kontrollert med to separate klienter. Live ChatGPT, oppgradering på en annen fysisk PC og skolemaskinenes kjøreregler er fortsatt uprøvd. Appen er en pilot uten betalingstjeneste. Kildekoden er foreløpig `UNLICENSED`.
+108 automatiserte tester er bestått. Samarbeid er kontrollert med to separate klienter. Live ChatGPT, oppgradering på en annen fysisk PC og skolemaskinenes kjøreregler er fortsatt uprøvd. Appen er en pilot uten betalingstjeneste. Kildekoden er foreløpig `UNLICENSED`.

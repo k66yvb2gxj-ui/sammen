@@ -11,6 +11,7 @@ import { createUpdateService } from '../src/updates.mjs';
 if (tls.setDefaultCACertificates && tls.getCACertificates) tls.setDefaultCACertificates([...tls.getCACertificates('bundled'), ...tls.getCACertificates('system')]);
 const project = dirname(dirname(fileURLToPath(import.meta.url)));
 const updates = createUpdateService({ currentVersion: JSON.parse(await readFile(join(project, 'package.json'), 'utf8')).version });
+const updateStatus = value => ({ ...value, automatic: false, reason: 'Automatisk installasjon er tilgjengelig i den installerte Windows-appen.' });
 const profile = process.env.SAMMEN_PREVIEW_PROFILE || join(dirname(project), 'sandbox-preview-profile');
 await mkdir(profile, { recursive: true });
 const store = new Store(join(profile, 'brain.sqlite'));
@@ -64,8 +65,8 @@ async function invoke(method, input) {
       store.reviewPersonalCard(card, input.rating); return snapshot();
     }
     case 'getAiSettings': return settings;
-    case 'getUpdateStatus': return updates.status();
-    case 'checkForUpdates': return updates.check({ force: true });
+    case 'getUpdateStatus': return updateStatus(updates.status());
+    case 'checkForUpdates': return updateStatus(await updates.check({ force: true }));
     case 'updateAiSettings': {
       if (!['chatgpt', 'ollama'].includes(input?.provider)) throw new Error('Velg en KI-forbindelse.');
       settings = { provider: input.provider, model: String(input.model || '').slice(0, 180), baseUrl: String(input.baseUrl || settings.baseUrl).slice(0, 500), chatgpt: { connected: false, enabled: false, email: null } };
@@ -90,7 +91,7 @@ const bridge = () => `
 (() => {
   const token = ${JSON.stringify(token)};
   const listeners = new Set(), fileListeners = new Set();
-  const names = ['getState','saveProfile','saveProject','saveItem','deleteItem','saveCard','reviewCard','createChat','chat','cancelChat','getAiSettings','getUpdateStatus','checkForUpdates','updateAiSettings','connectChatGPT','disconnectChatGPT','listModels','importDocuments','searchSources','addSource','exportProject','importProject','getSyncStatus','startHosting','stopHosting','joinGroup','leaveGroup','startInternetRoom','openSharedFile','updateSharedFile','closeSharedFile','getIntegrationInfo','doctorOneNote','listOneNotePages','importOneNotePages','openOriginal','getRemoteDeviceStatus','startRemoteDevice','stopRemoteDevice'];
+  const names = ['getState','saveProfile','saveProject','saveItem','deleteItem','saveCard','reviewCard','createChat','chat','cancelChat','getAiSettings','getUpdateStatus','checkForUpdates','installUpdate','updateAiSettings','connectChatGPT','disconnectChatGPT','listModels','importDocuments','searchSources','addSource','exportProject','importProject','getSyncStatus','startHosting','stopHosting','joinGroup','leaveGroup','startInternetRoom','openSharedFile','updateSharedFile','closeSharedFile','getIntegrationInfo','doctorOneNote','listOneNotePages','importOneNotePages','openOriginal','getRemoteDeviceStatus','startRemoteDevice','stopRemoteDevice'];
   let lastState = '';
   let polling = false;
   async function call(method, input) {
@@ -104,6 +105,7 @@ const bridge = () => `
   api.onChatDelta = () => () => {};
   api.onRemoteDeviceStatus = () => () => {};
   api.onUpdateStatus = () => () => {};
+  api.onPrepareForUpdate = () => () => {};
   api.onFileCollaboration = callback => { fileListeners.add(callback); return () => fileListeners.delete(callback); };
   api.copyText = value => navigator.clipboard.writeText(value).then(() => true);
   api.openExternal = async value => { const url = new URL(value); if (!['https:','http:'].includes(url.protocol) || url.username || url.password) throw new Error('Denne lenken åpnes i Windows-appen.'); window.open(url.href, '_blank', 'noopener,noreferrer'); return true; };

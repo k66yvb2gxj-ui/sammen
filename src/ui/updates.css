@@ -2,5 +2,10 @@
 .updates-panel .updates-version { color: #9b8aa7; font-size: 11px; margin: 0 0 13px; }
 .updates-panel .updates-status { font-size: 14px; color: #685077; line-height: 1.6; }
 .updates-panel .updates-help { font-size: 12px; line-height: 1.7; margin: 13px 0 24px; }
+.updates-download { display: flex; align-items: center; gap: 12px; margin: 15px 0; }
+.updates-progress { appearance: none; width: 100%; height: 7px; border: 0; border-radius: 7px; overflow: hidden; background: #ede3f2; accent-color: #a587bb; }
+.updates-progress::-webkit-progress-bar { background: #ede3f2; border-radius: 7px; }
+.updates-progress::-webkit-progress-value { background: #a587bb; border-radius: 7px; }
+.updates-percent { flex: none; min-width: 36px; font-size: 11px; text-align: right; font-variant-numeric: tabular-nums; color: #907b9d; }
 .updates-badge { color: #76538d !important; background: #ecdef7 !important; }
 .updates-badge[hidden] { display: none !important; }

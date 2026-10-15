@@ -12,6 +12,8 @@ import { searchSources } from './research.mjs';
 import { createLocalOneNoteService } from './onenote.mjs';
 import { createRemoteDeviceService } from './remote-device.mjs';
 import { createUpdateService } from './updates.mjs';
+import { createAutoUpdateService } from './auto-updates.mjs';
+import { createUpdatePreparation } from './update-preparation.mjs';
 
 const base = path.dirname(fileURLToPath(import.meta.url));
 const uiPath = path.join(base, 'ui', 'index.html');
@@ -21,6 +23,11 @@ app.setName('Sammen');
 if (!process.env.SAMMEN_TEST_DATA && !app.requestSingleInstanceLock()) app.quit();
 let window, store, sync, ai, oneNote, remoteDevice, updates;
 let quitting = false;
+let restartAfterUpdate = false, installingUpdate = false, updateTimer;
+const updatePreparation = createUpdatePreparation({ send: value => {
+  if (!window || window.isDestroyed()) throw new Error('Vinduet er lukket.');
+  window.webContents.send('sammen:prepare-update', value);
+} });
 const activeChats = new Map();
 const notify = state => { if (window && !window.isDestroyed()) window.webContents.send('sammen:state', state); };
 function trusted(event) { if (event.senderFrame?.url !== uiUrl || event.sender !== window?.webContents) throw new Error('Denne handlingen er ikke tilgjengelig her.'); }
@@ -55,6 +62,13 @@ async function configureIpc(directory) {
   handle('copyText', value => { if (typeof value !== 'string' || value.length > 10000) throw new Error('Ugyldig tekst.'); clipboard.writeText(value); return true; });
   handle('getUpdateStatus', () => updates.status());
   handle('checkForUpdates', () => updates.check({ force: true }));
+  handle('completeUpdatePreparation', input => updatePreparation.complete(input));
+  handle('installUpdate', () => {
+    if (!updates.status().automatic || updates.status().status !== 'downloaded') throw new Error('Ingen ferdig nedlastet oppdatering.');
+    restartAfterUpdate = true;
+    app.quit();
+    return updates.status();
+  });
   handle('getRemoteDeviceStatus', () => remoteDevice.status());
   handle('startRemoteDevice', () => remoteDevice.start());
   handle('stopRemoteDevice', () => remoteDevice.stop());
@@ -153,14 +167,24 @@ remoteDevice = createRemoteDeviceService({
   directory: path.join(directory, 'remote-device'),
   onStatus: value => { if (window && !window.isDestroyed()) window.webContents.send('sammen:remote-device-status', value); }
 });
-updates = createUpdateService({
-  currentVersion: app.getVersion(),
-  onStatus: value => { if (window && !window.isDestroyed()) window.webContents.send('sammen:update-status', value); }
-});
+const updateStatus = value => {
+  if (window && !window.isDestroyed()) window.webContents.send('sammen:update-status', value);
+  if (installingUpdate && value.status === 'error') { quitting = false; restartAfterUpdate = false; installingUpdate = false; }
+};
+const installed = app.isPackaged && process.platform === 'win32' && await fs.access(path.join(path.dirname(app.getPath('exe')), 'Uninstall Sammen.exe')).then(() => true, () => false);
+if (installed) {
+  const { default: electronUpdater } = await import('electron-updater');
+  updates = createAutoUpdateService({ currentVersion: app.getVersion(), updater: electronUpdater.autoUpdater, onStatus: updateStatus });
+} else {
+  const reason = app.isPackaged ? 'Installer Sammen med .exe-filen én gang for å få automatiske oppdateringer.' : 'Automatisk installasjon er tilgjengelig i den installerte Windows-appen.';
+  const decorate = value => ({ ...value, automatic: false, reason });
+  const manual = createUpdateService({ currentVersion: app.getVersion(), onStatus: value => updateStatus(decorate(value)) });
+  updates = { status: () => decorate(manual.status()), check: async options => decorate(await manual.check(options)), dispose: manual.dispose };
+}
 await configureIpc(directory);
 window = new BrowserWindow({width:1440,height:960,minWidth:1000,minHeight:700,title:'Sammen',backgroundColor:'#f7f8f3',show:!process.env.SAMMEN_HEADLESS,webPreferences:{preload:path.join(base,'preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:true}});
 window.on('close', event => {
-  if (!quitting && remoteDevice.status().running) { event.preventDefault(); app.quit(); }
+  if (!quitting && (remoteDevice.status().running || updates.status().status === 'downloaded')) { event.preventDefault(); app.quit(); }
 });
 window.webContents.setWindowOpenHandler(()=>({action:'deny'}));
 window.webContents.on('will-navigate',event=>event.preventDefault());
@@ -168,6 +192,8 @@ window.webContents.session.setPermissionRequestHandler((_contents,_permission,ca
 window.webContents.session.on('will-download',event=>event.preventDefault());
 await window.loadURL(uiUrl);
 void updates.check();
+updateTimer = setInterval(() => { if (!quitting) void updates.check(); }, 4 * 60 * 60 * 1000);
+updateTimer.unref();
 if (!app.isPackaged && process.env.SAMMEN_SELF_CHECK && process.env.SAMMEN_TEST_DATA) {
   try {
     const testCode = await fs.readFile(path.join(base,'..','scripts','electron-selfcheck.js'),'utf8');
@@ -186,15 +212,36 @@ app.on('before-quit', event => {
   if (quitting) return;
   event.preventDefault();
   quitting = true;
-  for (const controller of activeChats.values()) controller.abort();
-  Promise.allSettled([remoteDevice?.stop(), sync?.stopHosting(), sync?.leaveGroup()]).then(() => {
+  (async () => {
+    const installOnQuit = updates?.status().status === 'downloaded';
+    if (installOnQuit && !await updatePreparation.request()) {
+      quitting = false; restartAfterUpdate = false;
+      dialog.showErrorBox('Oppdateringen venter', 'Endringene kunne ikke lagres. Lagre notatet og prøv å lukke Sammen igjen.');
+      return;
+    }
+    for (const controller of activeChats.values()) controller.abort();
+    await Promise.allSettled([remoteDevice?.stop(), sync?.stopHosting(), sync?.leaveGroup()]);
     if (remoteDevice?.status().running) {
-      quitting = false;
+      quitting = false; restartAfterUpdate = false;
       dialog.showErrorBox('Agenten kjører fortsatt', 'PC-tilkoblingen kunne ikke stoppes. Prøv Stopp agenten under Profil → Denne PC-en før du lukker Sammen.');
+      return;
+    }
+    if (installOnQuit && updates?.status().status === 'downloaded') {
+      installingUpdate = true;
+      const started = updates.install({ restart: restartAfterUpdate });
+      if (!started || updates.status().status === 'error') {
+        quitting = false; restartAfterUpdate = false;
+        installingUpdate = false;
+        dialog.showErrorBox('Oppdateringen kunne ikke installeres', 'Prøv igjen under Profil → Oppdateringer.');
+      }
       return;
     }
     updates?.dispose();
     app.quit();
+  })().catch(error => {
+    quitting = false; restartAfterUpdate = false;
+    dialog.showErrorBox('Sammen kunne ikke lukkes', error.message);
   });
 });
+app.on('will-quit', () => { clearInterval(updateTimer); updatePreparation.dispose(); updates?.dispose(); });
 }).catch(error=>{ console.error('Sammen kunne ikke starte:',error.message); if(!process.env.SAMMEN_HEADLESS) dialog.showErrorBox('Sammen kunne ikke starte',error.message); app.quit(); });

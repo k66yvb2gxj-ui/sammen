@@ -413,6 +413,18 @@ async function saveEditor() {
   } catch (error) { showError(error); return false; }
   finally { if (button?.isConnected) { button.disabled = false; button.replaceChildren(icon('check', 14), 'Lagre'); } }
 }
+
+// A downloaded update may only close the window after local edits have saved.
+api.onPrepareForUpdate?.(async ({ id: requestId }) => {
+  let ok = false;
+  try {
+    window.SammenSidechat?.prepareForUpdate?.();
+    window.SammenMindmap?.flush?.();
+    ok = !editor?.dirty || await saveEditor();
+    if (!ok) toast('Lagre endringene før appen kan oppdateres.', true);
+  } catch (error) { showError(error); }
+  try { await invoke('completeUpdatePreparation', { id: requestId, ok }); } catch {}
+});
 function deleteItemModal(item) {
   confirmModal('Slette fra Brain?', `«${item.title}» blir slettet fra dette prosjektet.`, 'Slett element', async () => {
     try { const result = await invoke('deleteItem', { id: item.id, revision: item.revision }); editor = null; ui.itemId = null; applyState(result); toast('Elementet er slettet.'); } catch (error) { showError(error); }
