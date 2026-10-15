@@ -1,0 +1,123 @@
+name: Windows release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Test and package Windows x64
+    runs-on: windows-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22.23.3'
+          cache: npm
+
+      - name: Verify version tag
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          $sammenVersion = (Get-Content -LiteralPath package.json -Raw | ConvertFrom-Json).version
+          if ($env:GITHUB_REF_NAME -ne "v$sammenVersion") {
+            throw "Tag must equal v$sammenVersion from package.json."
+          }
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Test
+        run: npm test
+
+      - name: Build collaboration assets
+        run: npm run build:collaboration
+
+      - name: Prepare bundled Node and Remote Desktop Commander
+        run: npm run prepare:remote
+
+      - name: Build per-user installer and portable ZIP
+        run: >-
+          npx --no-install electron-builder --win nsis zip --x64 --publish never
+          --config.directories.output=release-ci
+          --config.nsis.oneClick=true
+          --config.nsis.perMachine=false
+          --config.nsis.allowElevation=false
+          --config.nsis.allowToChangeInstallationDirectory=false
+          --config.nsis.packElevateHelper=false
+
+      - name: Verify packages and write checksums
+        run: |
+          $sammenArtifacts = @(Get-ChildItem -LiteralPath release-ci -File | Where-Object {
+            $_.Extension -in '.exe', '.zip', '.blockmap', '.yml'
+          } | Sort-Object Name)
+          if (!($sammenArtifacts | Where-Object Extension -eq '.exe') -or !($sammenArtifacts | Where-Object Extension -eq '.zip')) {
+            throw 'Both the Windows installer and portable ZIP must exist.'
+          }
+          $sammenChecksums = $sammenArtifacts | ForEach-Object {
+            $sammenHash = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            "$sammenHash  $($_.Name)"
+          }
+          $sammenChecksums | Set-Content -LiteralPath release-ci/SHA256SUMS.txt -Encoding utf8NoBOM
+
+      - name: Retain packages even when a later step fails
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: sammen-windows-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            release-ci/*.exe
+            release-ci/*.zip
+            release-ci/*.blockmap
+            release-ci/*.yml
+            release-ci/SHA256SUMS.txt
+          if-no-files-found: warn
+          compression-level: 0
+          retention-days: 14
+
+  release:
+    name: Prepare GitHub Release
+    needs: build
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: write
+    steps:
+      - name: Download verified build artifacts
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: sammen-windows-${{ github.run_id }}-${{ github.run_attempt }}
+          path: release-assets
+
+      # Drafts keep the unsigned pilot build out of the public update channel
+      # until the installer and data migration have been checked on a second PC.
+      - name: Create draft release with packages
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" release-assets/* \
+            --verify-tag \
+            --title "Sammen $GITHUB_REF_NAME" \
+            --generate-notes \
+            --draft

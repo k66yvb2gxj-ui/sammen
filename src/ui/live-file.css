@@ -1,0 +1,5 @@
+.live-file-presence { display: inline-flex; align-items: center; gap: 6px; color: #8c789f; font-size: 10px; }
+.live-file-presence[hidden] { display: none; }
+.live-file-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #9bbba2; }
+.live-file-opening .topic-map-svg { pointer-events: none; opacity: .65; }
+.brain-workspace .mindmap-editor .live-file-presence { position: absolute; top: 48px; right: 22px; }

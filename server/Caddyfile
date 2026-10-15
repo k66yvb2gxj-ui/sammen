@@ -1,0 +1,3 @@
+{$SAMMEN_DOMAIN} {
+  reverse_proxy rooms:8787
+}

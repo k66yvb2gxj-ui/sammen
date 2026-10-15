@@ -1,0 +1,16 @@
+.profile-button[role="button"] { cursor: pointer; }
+.profile-button[role="button"]:focus-visible { outline: 2px solid #a688bd; outline-offset: 5px; border-radius: 10px; }
+.profile-device-action { margin-top: 24px; padding-top: 20px; border-top: 1px solid #e6ddeb; }
+.profile-device-action .form-help { margin-bottom: 0; }
+.device-modal { width: 580px; }
+.device-setup { color: #766584; font-size: 13px; }
+.device-status { margin: 16px 0; color: #62506f; font-size: 16px; font-weight: 600; }
+.device-consent { line-height: 1.7; margin: 0 0 12px; }
+.device-note { line-height: 1.6; margin: 12px 0; font-size: 12px; color: #887895; }
+.device-actions, .device-links { display: flex; flex-wrap: wrap; gap: 10px; margin: 18px 0; }
+.device-error { background: #fff0ed; border-radius: 9px; color: #95625a; padding: 12px; overflow-wrap: anywhere; }
+.device-code { font-size: 14px; }
+.device-code code { font-weight: 600; user-select: all; }
+.device-log { margin: 20px 0; }
+.device-log summary { cursor: pointer; }
+.device-log pre { max-height: 180px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; line-height: 1.6; background: #f3edf8; border-radius: 9px; padding: 12px; color: #685276; user-select: text; }

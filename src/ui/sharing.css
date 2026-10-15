@@ -1,0 +1,33 @@
+.sharing-modal { max-width: 560px; }
+.sharing-panel { color: #756581; }
+.sharing-panel h3 { margin: 0 0 12px; font-size: 13px; color: #6f587f; font-weight: 600; }
+.sharing-tabs { display: flex; gap: 6px; margin-bottom: 18px; }
+.sharing-tabs > button { display: flex; align-items: center; gap: 6px; color: #9482a3; background: #fcfaff; border: 1px solid #e3d9eb; border-radius: 11px; padding: 8px 13px; font-size: 12px; }
+.sharing-tabs > button.active { color: #73568d; background: #e9dcf5; border-color: #cbb5df; box-shadow: 0 2px 0 #e1d4ec; }
+.sharing-create-form { display: grid; gap: 0; }
+.sharing-create-form > .button, .sharing-join-form > .button { justify-self: start; }
+.sharing-note { font-size: 11px; line-height: 1.6; color: #9b8aa6; margin: 11px 0 0; }
+.sharing-join-form { display: grid; border-top: 1px solid #e9e0ee; margin-top: 21px; padding-top: 18px; }
+.sharing-error { color: #a66073; font-size: 12px; line-height: 1.6; margin: 14px 0 0; }
+.sharing-status { display: flex; align-items: center; gap: 10px; margin: 2px 0 19px; }
+.sharing-status strong { display: block; font-size: 13px; font-weight: 600; color: #6e567d; }
+.sharing-status small { display: block; margin-top: 4px; font-size: 11px; color: #9a86a8; }
+.sharing-status-dot { width: 9px; height: 9px; border-radius: 50%; background: #9bb6a0; border: 1px solid #81a48a; }
+.sharing-status-dot.offline { background: #d7ad91; border-color: #be9276; }
+.sharing-invitation { background: #f8f3fc; border: 1px solid #e6dced; border-radius: 13px 15px 12px 14px; padding: 13px; }
+.sharing-section-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 7px; }
+.sharing-section-head h3 { margin: 0; }
+.sharing-copy-row { display: flex; gap: 8px; align-items: flex-start; padding: 5px 0; }
+.sharing-copy-row code { flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: 10px; line-height: 1.7; color: #9c86aa; padding-top: 3px; }
+.sharing-copy-row .button { padding: 5px; flex-shrink: 0; border: 0; box-shadow: none; background: transparent; }
+.sharing-copy-row .button:hover { background: #ece2f5; }
+.sharing-members { margin: 19px 0; }
+.sharing-members-title { display: flex; align-items: center; gap: 7px; color: #8e759d; font-size: 11px; }
+.sharing-members ul { list-style: none; padding: 0; display: grid; gap: 8px; margin: 12px 0 0; }
+.sharing-members li { display: flex; align-items: center; gap: 9px; font-size: 12px; }
+.sharing-avatar { display: inline-flex; align-items: center; justify-content: center; width: 25px; height: 25px; background: #ecdef6; color: #9675ae; border: 1px solid #dac8e7; border-radius: 9px 10px 8px 9px; font-size: 10px; }
+.sharing-editing { margin-left: auto; color: #a59aae; font-size: 10px; }
+.sharing-connected > .button { margin-top: 14px; }
+.sharing-panel :focus-visible { outline: 2px solid #9c7bbe; outline-offset: 3px; }
+.sharing-busy { color: #8e729f; font-size: 12px; margin: 0 0 15px; background: #f1e8f9; border: 1px solid #dfcfed; padding: 10px 12px; border-radius: 11px; }
+.sharing-you { color: #b0a0ba; font-size: 10px; }

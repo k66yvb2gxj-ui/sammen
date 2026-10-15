@@ -1,0 +1,29 @@
+services:
+  rooms:
+    build:
+      context: ..
+      dockerfile: server/Dockerfile
+    environment:
+      SAMMEN_PUBLIC_ORIGIN: https://${SAMMEN_DOMAIN}
+      SAMMEN_CREATE_KEY: ${SAMMEN_CREATE_KEY}
+    volumes:
+      - sammen-data:/data
+    restart: unless-stopped
+  caddy:
+    image: caddy:2
+    ports:
+      - '80:80'
+      - '443:443'
+    environment:
+      SAMMEN_DOMAIN: ${SAMMEN_DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - rooms
+    restart: unless-stopped
+volumes:
+  sammen-data:
+  caddy-data:
+  caddy-config:

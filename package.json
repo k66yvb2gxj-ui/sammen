@@ -1,0 +1,82 @@
+{
+  "name": "sammen-desktop",
+  "version": "0.4.0",
+  "description": "Et felles arbeidsrom for research, notater og læring",
+  "author": "Sammen",
+  "license": "UNLICENSED",
+  "private": true,
+  "type": "module",
+  "main": "src/main.mjs",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test tests/*.test.mjs",
+    "build:collaboration": "node scripts/build-collaboration.mjs",
+    "prepare:remote": "powershell -NoProfile -File scripts/prepare-remote-device.ps1",
+    "build": "electron-builder --win nsis zip --x64",
+    "pack": "electron-builder --win --dir --x64"
+  },
+  "dependencies": {
+    "fast-xml-parser": "5.11.2",
+    "jose": "6.2.12",
+    "mammoth": "1.13.0",
+    "selfsigned": "5.5.0",
+    "yjs": "13.6.33"
+  },
+  "devDependencies": {
+    "electron": "43.7.10",
+    "electron-builder": "26.15.3",
+    "esbuild": "0.28.2"
+  },
+  "build": {
+    "appId": "no.sammen.desktop",
+    "productName": "Sammen",
+    "electronVersion": "43.7.10",
+    "asar": true,
+    "asarUnpack": [
+      "src/onenote-read.ps1"
+    ],
+    "directories": {
+      "output": "release-43"
+    },
+    "files": [
+      "src/**/*",
+      "package.json",
+      "README.md"
+    ],
+    "extraResources": [
+      {
+        "from": "../remote-device-bundle",
+        "to": "remote-device",
+        "filter": [
+          "runtime/**/*",
+          "agent/node_modules/**/*",
+          "agent/package.json",
+          "agent/package-lock.json",
+          "bundle.json",
+          "THIRD-PARTY-NOTICES.md"
+        ]
+      }
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "zip"
+      ],
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "allowElevation": false,
+      "packElevateHelper": false,
+      "allowToChangeInstallationDirectory": false,
+      "createDesktopShortcut": true
+    },
+    "artifactName": "Sammen-Windows-${version}.${ext}"
+  },
+  "overrides": {
+    "mammoth": {
+      "argparse": "2.0.1"
+    }
+  }
+}

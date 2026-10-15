@@ -1,0 +1,85 @@
+.topic-map {
+  --topic-ink: #6f5c85;
+  border: 1px solid #e7dcec;
+  border-radius: 18px;
+  background: #fbf8fd;
+  overflow: hidden;
+  min-width: 0;
+  width: 100%;
+  margin: 14px 0 4px;
+}
+.topic-map-toolbar, .topic-map-properties {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  padding: 10px 12px;
+  background: #fffdfd;
+}
+.topic-map-toolbar { border-bottom: 1px solid #f1eaf5; }
+.topic-map-properties { gap: 10px; padding-top: 8px; padding-bottom: 8px; }
+.topic-map-toolbar .button, .topic-map-properties .button { min-height: 31px; padding: 6px 9px; font-size: 12px; }
+.topic-map-toolbar .button.active { background: #eee2fa; color: #755597; box-shadow: inset 0 0 0 1px #cfb8e5; }
+.topic-map-tool-divider { height: 20px; width: 1px; margin: 0 3px; background: #eee5f2; }
+.topic-map-history { font-size: 22px !important; line-height: 1; padding-top: 2px !important; padding-bottom: 2px !important; }
+.topic-map-colors { display: flex; align-items: center; gap: 6px; }
+.topic-map-swatch { width: 22px; height: 22px; min-width: 22px; border: 2px solid #d6c9df; background: var(--swatch); border-radius: 50%; cursor: pointer; padding: 0; box-shadow: 0 2px 0 #e8e0ed; }
+.topic-map-swatch.selected { border-color: #9c7dbc; box-shadow: 0 0 0 2px #f5edf9; }
+.topic-map-swatch:focus-visible { outline: 2px solid #9270b0; outline-offset: 3px; }
+.topic-map-shape, .topic-map-parent { min-height: 30px; max-width: 165px; border: 1px solid #e4d9eb; border-radius: 9px; background: #fff; padding: 4px 8px; font-size: 11px; color: #79668b; }
+.topic-map-parent { max-width: 180px; flex: 1; }
+.topic-map-properties > .button { margin-left: auto; }
+.topic-map-stage { position: relative; width: 100%; height: clamp(320px, 49vh, 650px); min-height: 320px; overflow: hidden; background-color: #faf6fe; background-image: radial-gradient(#e8dff0 1px, transparent 1px); background-size: 22px 22px; }
+.brain-workspace .mindmap-editor { position: relative; }
+.brain-workspace .mindmap-editor .editor-toolbar { position: absolute; top: 17px; right: 20px; padding: 0; z-index: 2; }
+.brain-workspace .mindmap-editor .editor-body { padding: 14px 20px 12px; overflow: hidden; }
+.brain-workspace .mindmap-editor .editor-title { font-size: 22px; max-width: calc(100% - 142px); margin-bottom: 4px; flex-shrink: 0; }
+.brain-workspace .mindmap-editor .editor-meta { display: none; }
+.brain-workspace .mindmap-editor .topic-map { flex: 1; min-height: 0; display: flex; flex-direction: column; margin: 8px 0 0; }
+.brain-workspace .mindmap-editor .topic-map-toolbar,
+.brain-workspace .mindmap-editor .topic-map-properties,
+.brain-workspace .mindmap-editor .topic-map-footer { flex-shrink: 0; }
+.brain-workspace .mindmap-editor .topic-map-stage { flex: 1; height: auto; min-height: 150px; }
+.topic-map-svg { display: block; width: 100%; height: 100%; cursor: grab; touch-action: none; user-select: none; overflow: hidden; }
+.topic-map-svg:active { cursor: grabbing; }
+.topic-map-svg:focus { outline: none; }
+.topic-map-svg:focus-visible { box-shadow: inset 0 0 0 2px #cab4df; }
+.topic-map-branch { fill: none; stroke: #c8b8d8; stroke-width: 3; stroke-linecap: round; }
+.topic-map-topic { cursor: grab; outline: none; }
+.topic-map-shadow { fill: #d8cce2; opacity: .6; }
+.topic-map-shape-body { stroke: #c6b2d7; stroke-width: 2; }
+.topic-map-topic.selected .topic-map-shape-body, .topic-map-topic:focus-visible .topic-map-shape-body { stroke: #a185bc; stroke-width: 3; }
+.topic-map-topic.drop-target .topic-map-shape-body { stroke: #7c9f8a; stroke-width: 4; stroke-dasharray: 7 4; }
+.topic-map-topic.relation-start .topic-map-shape-body { stroke: #a477b0; stroke-dasharray: 6 4; }
+.topic-map-label { fill: #756188; font-size: 14px; font-family: inherit; font-weight: 550; }
+.topic-map-collapse { cursor: pointer; }
+.topic-map-collapse circle { fill: #fffafe; stroke: #c7b2d8; stroke-width: 1.5; }
+.topic-map-collapse text { fill: #9778af; font-family: inherit; font-size: 14px; font-weight: 650; }
+.topic-map-collapse:focus-visible circle { stroke: #8764a4; stroke-width: 3; }
+.topic-map-relation { cursor: pointer; outline: none; }
+.topic-map-relation-hit { stroke: transparent; stroke-width: 15; fill: none; }
+.topic-map-relation-path { fill: none; stroke: #b195c4; stroke-width: 2; stroke-dasharray: 6 5; }
+.topic-map-relation:focus-visible .topic-map-relation-path { stroke-width: 4; }
+.topic-map-relation-text { fill: #9477ac; stroke: #faf6fe; stroke-width: 5px; paint-order: stroke; font-family: inherit; font-size: 12px; }
+.topic-map-inline-input { display: block; resize: none; width: 100%; height: 100%; border: 2px solid #a185bc; border-radius: 13px; background: #fffdfd; color: #6f5c85; padding: 11px 10px; font-family: inherit; font-size: 14px; line-height: 18px; text-align: center; outline: none; box-sizing: border-box; }
+.topic-map-notice { position: absolute; left: 12px; bottom: 9px; right: 12px; color: #8f789f; font-size: 11px; pointer-events: none; text-align: center; }
+.topic-map-notice:empty { display: none; }
+.topic-map-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 10px; background: #fffdfd; border-top: 1px solid #eee4f4; font-size: 10px; color: #a28fb0; }
+.topic-map-key-hint { font-size: 10px; }
+.topic-map-key-hint kbd { background: #f5f0f8; border: 1px solid #e9e0ef; border-radius: 4px; padding: 1px 4px; font: inherit; color: #8c759e; }
+.topic-map-view-tools { display: flex; align-items: center; gap: 2px; }
+.topic-map-view-tools .button { min-height: 27px; font-size: 11px; padding: 4px 8px; }
+.topic-map-zoom-value { min-width: 36px; text-align: center; font-size: 10px; }
+.topic-map-relation-editor { display: flex; align-items: center; gap: 4px; position: absolute; top: 12px; left: 50%; transform: translateX(-50%); background: #fff; border: 1px solid #dac9e7; border-radius: 12px; padding: 5px; box-shadow: 0 3px 0 #e5dbea; max-width: calc(100% - 24px); }
+.topic-map-relation-input { min-width: 0; width: 190px; border: 0; background: transparent; color: #78628c; padding: 5px 7px; font-size: 12px; outline: none; }
+.brain-note-editor:has(.topic-map) .editor-body { max-width: none; }
+.brain-note-editor:has(.topic-map) .editor-meta { margin-bottom: 5px; }
+@media (max-width: 560px) {
+  .topic-map-toolbar { padding: 8px; }
+  .topic-map-tool-divider { margin: 0; }
+  .topic-map-properties { padding: 8px; gap: 7px; }
+  .topic-map-parent { max-width: 135px; }
+  .topic-map-stage { height: 350px; }
+  .topic-map-key-hint { display: none; }
+  .topic-map-footer { justify-content: flex-end; }
+}

@@ -1,0 +1,6 @@
+.updates-panel { color: #74667f; }
+.updates-panel .updates-version { color: #9b8aa7; font-size: 11px; margin: 0 0 13px; }
+.updates-panel .updates-status { font-size: 14px; color: #685077; line-height: 1.6; }
+.updates-panel .updates-help { font-size: 12px; line-height: 1.7; margin: 13px 0 24px; }
+.updates-badge { color: #76538d !important; background: #ecdef7 !important; }
+.updates-badge[hidden] { display: none !important; }

@@ -1,0 +1,31 @@
+.file-sources { margin-top: 24px; border-top: 1px solid #e8e0ed; padding-top: 13px; color: #756581; }
+.file-sources-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.file-sources-head h4 { margin: 0; font-size: 12px; font-weight: 600; }
+.file-sources-head .button { min-height: 26px; }
+.file-sources-list { display: grid; gap: 6px; margin-top: 7px; }
+.file-source-row { display: flex; align-items: flex-start; gap: 9px; padding: 8px 9px; background: #f8f3fc; border: 1px solid #e8dfef; border-radius: 11px 13px 10px 12px; }
+.file-source-label { flex-shrink: 0; margin-top: 2px; font-size: 10px; color: #a18bb2; min-width: 22px; }
+.file-source-copy { flex: 1; min-width: 0; }
+.file-source-link { display: inline-flex; align-items: center; gap: 6px; padding: 0; color: #795d95; text-align: left; font-size: 11px; line-height: 1.5; background: transparent; word-break: break-word; }
+.file-source-link:hover { color: #5e447a; }
+.file-source-actions { display: flex; gap: 2px; flex-shrink: 0; }
+.file-source-actions .button { padding: 4px; min-height: 24px; border: 0; background: transparent; box-shadow: none; }
+.file-source-actions .button:hover { background: #eae0f3; }
+.file-source-excerpt { margin-top: 4px; font-size: 10px; color: #95819f; }
+.file-source-excerpt summary { cursor: pointer; }
+.file-source-excerpt p { white-space: pre-wrap; overflow-wrap: anywhere; margin: 7px 0 0; font-size: 11px; line-height: 1.6; color: #73657f; }
+.file-source-modal { max-width: 510px; }
+.file-source-tabs { display: flex; gap: 5px; padding-bottom: 16px; }
+.file-source-tabs button { border: 1px solid #e5dbed; background: #fcfaff; border-radius: 10px; padding: 8px 13px; color: #9482a3; font-size: 12px; }
+.file-source-tabs button.active { background: #e9dcf5; border-color: #cdb6df; color: #73568d; }
+.file-source-error { color: #a66073; font-size: 12px; }
+.file-source-form textarea { min-height: 90px; }
+.file-sources :focus-visible, .file-source-form :focus-visible { outline: 2px solid #9c7bbe; outline-offset: 3px; }
+.file-sources-map { flex-shrink: 0; margin-top: 8px; padding-top: 7px; max-height: 170px; }
+.file-sources-disclosure > summary { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 11px; padding: 5px 2px; list-style: none; }
+.file-sources-disclosure > summary::-webkit-details-marker { display: none; }
+.file-sources-disclosure > summary > .icon { margin-left: auto; transform: rotate(90deg); }
+.file-sources-disclosure[open] > summary > .icon { transform: rotate(-90deg); }
+.file-sources-disclosure[open] { max-height: 160px; overflow-y: auto; padding-right: 4px; }
+.file-sources-disclosure .file-sources-head { justify-content: flex-end; }
+.file-sources-count { color: #b0a0ba; font-size: 10px; }

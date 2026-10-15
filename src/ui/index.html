@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="nb">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'none'">
+  <title>Sammen – lær med hverandre</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="minimal.css">
+  <link rel="stylesheet" href="brain.css">
+  <link rel="stylesheet" href="mindmap.css">
+  <link rel="stylesheet" href="study.css">
+  <link rel="stylesheet" href="file-sources.css">
+  <link rel="stylesheet" href="sharing.css">
+  <link rel="stylesheet" href="live-file.css">
+  <link rel="stylesheet" href="device-setup.css">
+  <link rel="stylesheet" href="sidechat.css">
+  <link rel="stylesheet" href="updates.css">
+  <script src="brain.js" defer></script>
+  <script src="mindmap.js" defer></script>
+  <script src="study.js" defer></script>
+  <script src="collaboration-model.js" defer></script>
+  <script src="file-sources.js" defer></script>
+  <script src="sharing.js" defer></script>
+  <script src="live-file.js" defer></script>
+  <script src="device-setup.js" defer></script>
+  <script src="sidechat.js" defer></script>
+  <script src="updates.js" defer></script>
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" aria-label="Hovedmeny">
+      <a class="brand" href="#overview" aria-label="Sammen, oversikt"><span class="brand-mark">s<span></span></span><span>sammen<span class="brand-period">.</span></span></a>
+      <div class="workspace-label"><span class="workspace-avatar">S</span><span>Ditt læringsrom<small id="sidebar-mode">Lokalt</small></span></div>
+      <div class="project-heading"><span>PROSJEKTER</span><button id="sidebar-add-project" class="icon-button" aria-label="Nytt prosjekt">+</button></div>
+      <div id="project-navigation" class="project-navigation"></div>
+      <div class="sidebar-bottom"><div class="local-status"><span class="status-dot"></span><span id="sidebar-storage">Lokalt arbeidsrom</span></div><div id="profile-button" class="profile-button"><span id="profile-avatar" class="profile-avatar">D</span><span><strong id="profile-name">Din profil</strong></span></div></div>
+    </aside>
+    <div class="workspace">
+      <header class="topbar"><nav id="navigation" aria-label="Faner"></nav><div class="topbar-tools"><div class="breadcrumb"><select id="project-select" aria-label="Velg prosjekt"></select><span id="view-label" class="sr-only">Brain</span></div><div class="topbar-actions"><span class="prototype-badge">FORHÅNDSVERSJON</span><button id="global-sharing" class="button button-quiet" title="Samarbeid" aria-label="Samarbeid">Samarbeid</button><button id="global-import" class="button button-quiet" title="Importer dokument">Importer</button><button id="global-sidechat" class="button button-quiet" title="Åpne ChatGPT" aria-controls="sidechat" aria-expanded="false">ChatGPT</button></div></div></header>
+      <div class="workspace-body">
+        <main id="main-content" tabindex="-1" aria-live="off"><div class="loading-state"><span class="loading-ring"></span><p>Åpner læringsrommet …</p></div></main>
+        <aside id="sidechat" class="sidechat" aria-label="ChatGPT sidepanel" hidden></aside>
+      </div>
+    </div>
+  </div>
+  <div id="toast-region" class="toast-region" aria-live="polite"></div>
+  <div id="modal-root"></div>
+</body>
+</html>

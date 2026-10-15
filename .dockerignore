@@ -1,0 +1,9 @@
+**
+!package.json
+!package-lock.json
+!src/
+!src/**
+!server/
+!server/**
+server/.env*
+!server/.env.example

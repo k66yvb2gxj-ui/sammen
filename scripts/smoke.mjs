@@ -1,0 +1,52 @@
+import { createRequire } from 'node:module';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
+import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
+const require=createRequire(import.meta.url);
+const { _electron }=require(process.env.PLAYWRIGHT_MODULE || 'playwright');
+const electronPath=process.env.SAMMEN_ELECTRON_PATH || require('electron');
+const root=resolve('.'); const profile=resolve('../ui-smoke-profile-'+randomUUID()); const shots=resolve('../screenshots');
+await mkdir(profile,{recursive:true}); await mkdir(shots,{recursive:true});
+const environment={...process.env,SAMMEN_TEST_DATA:profile,SAMMEN_HEADLESS:'1'}; delete environment.NODE_OPTIONS;
+const application=await _electron.launch({executablePath:electronPath,args:[root],env:environment,timeout:30000});
+try {
+  const page=await application.firstWindow(); const errors=[];
+  page.on('pageerror',error=>errors.push(error.message));
+  await page.waitForFunction(()=>Boolean(window.sammen && document.querySelector('.nav-item')),{timeout:15000});
+  const initial=await page.evaluate(()=>window.sammen.getState());
+  const projectId=initial.projects[0].id;
+  await page.evaluate(async projectId=>{
+    await window.sammen.saveProject({id:projectId,title:'Biologi · celler og energi',description:'Undersøk, skriv med egne ord og øv sammen.',color:'#647a64'});
+    await window.sammen.saveItem({projectId,title:'Celleånding — arbeidsnotat',type:'note',origin:'human',content:'Celleånding frigjør energi fra næringsstoffer.\n\nSpørsmål vi vil undersøke:\n• Hvorfor trenger celler ATP?\n• Hva skjer i mitokondriene?\n• Hvordan henger prosessen sammen med fotosyntesen?\n\nDette er demonstrasjonsinnhold for å teste appen.'});
+    await window.sammen.saveItem({projectId,title:'Et tankekart over cellen',type:'mindmap',origin:'human',mindmap:{nodes:[{id:'r',text:'Cellen',parentId:null},{id:'a',text:'Energi',parentId:'r'},{id:'b',text:'Membran',parentId:'r'},{id:'c',text:'Arvestoff',parentId:'r'},{id:'d',text:'Mitokondrier',parentId:'a'}]}});
+    await window.sammen.saveCard({projectId,question:'Hva står ATP for?',answer:'Adenosintrifosfat.'});
+  },projectId);
+  await page.locator('#navigation button[title="Brain"]').click();
+  await page.getByRole('button',{name:/Celleånding — arbeidsnotat/}).click();
+  await page.waitForSelector('.editor-panel');
+  await page.screenshot({path:resolve(shots,'brain.png')});
+  const editor=page.locator('textarea').first();
+  await editor.fill('Notat endret gjennom det faktiske grensesnittet.');
+  await page.getByRole('button',{name:'Lagre',exact:true}).click();
+  const saved=await page.evaluate(()=>window.sammen.getState());
+  assert.ok(saved.items.some(item=>item.content==='Notat endret gjennom det faktiske grensesnittet.'));
+  await page.getByRole('button',{name:'Flashcards',exact:true}).click();
+  await page.getByRole('button',{name:'Vis svar',exact:true}).click();
+  await page.getByRole('button',{name:/Greit/}).click();
+  assert.equal((await page.evaluate(()=>window.sammen.getState())).flashcards[0].reviewCount,1);
+  await page.getByRole('button',{name:'Research',exact:true}).click();
+  const inputs=await page.locator('input').all();
+  assert.ok(inputs.length>0);
+  await page.getByRole('button',{name:'AI-chat',exact:true}).click();
+  await page.screenshot({path:resolve(shots,'chat.png')});
+  await page.getByRole('button',{name:'Innstillinger',exact:true}).click();
+  const diagnostic=await page.evaluate(()=>window.sammen.doctorOneNote());
+  assert.equal(diagnostic.contentRead,false);
+  assert.ok(await page.getByRole('button',{name:'Hent fra OneNote',exact:true}).count());
+  await page.screenshot({path:resolve(shots,'settings.png')});
+  assert.deepEqual(errors,[]);
+  await writeFile(resolve('../ui-smoke-result.json'),JSON.stringify({passed:true,checks:['Electron startup','real SQLite saves through UI','individual flashcard review','research screen','AI connection screen','OneNote registration-only diagnostic'],oneNote:diagnostic,screenshots:shots},null,2));
+  console.log('ELECTRON_UI_SMOKE_PASS');
+} catch(error) { const page=application.windows()[0]; if(page){await page.screenshot({path:resolve(shots,'failure.png')});console.log((await page.locator('body').innerText()).slice(-2500));} throw error; }
+finally {await application.close();}

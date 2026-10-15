@@ -1,0 +1,36 @@
+# Dependencies and generated distributions
+node_modules/
+release/
+release-*/
+dist/
+coverage/
+test-results/
+remote-device-bundle/
+remote-device-downloads/
+
+# Local app data, pairing sessions and credentials
+*.sqlite*
+*.db
+*.db-shm
+*.db-wal
+.env*
+!.env.example
+device.json
+session.json
+sessions/
+credentials/
+*.pfx
+*.p12
+*.key
+*.pem
+
+# Logs, caches and obsolete local backups
+*.log
+.cache/
+*.tmp
+*.bak
+*~
+previous-package-lock.json
+.DS_Store
+Thumbs.db
+Desktop.ini
