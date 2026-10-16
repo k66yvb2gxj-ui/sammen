@@ -4,7 +4,7 @@
   let binding = null, generation = 0, initialized = false;
   const shared = draft => {
     const sync = ui.sync || state.sync;
-    return Boolean(draft && ['host', 'client'].includes(sync.mode) && sync.projectId === draft.projectId);
+    return Boolean(draft && ['host', 'client'].includes(sync.mode) && (sync.scope === 'brain' || sync.projectId === draft.projectId));
   };
   const busyMap = draft => draft?.type === 'mindmap' && Boolean(document.querySelector('.topic-map-inline-input, .topic-map-relation-input, .topic-map-svg.dragging'));
   const canonical = value => Array.isArray(value) ? value.map(canonical) : value && typeof value === 'object' ? Object.fromEntries(Object.keys(value).sort().map(key => [key, canonical(value[key])])) : value;

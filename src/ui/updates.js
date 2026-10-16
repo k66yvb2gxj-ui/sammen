@@ -85,6 +85,6 @@
     try { accept(await invoke('getUpdateStatus')); } catch {}
   }
   window.SammenUpdates = { open };
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initialize, { once: true });
+  if (document.readyState !== 'complete') document.addEventListener('DOMContentLoaded', initialize, { once: true });
   else queueMicrotask(initialize);
 })();

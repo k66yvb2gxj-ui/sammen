@@ -21,11 +21,11 @@ const citations = value => {
 };
 
 export class Store {
-  constructor(filename = ':memory:') {
+  constructor(filename = ':memory:', { seedDefaultProject = true } = {}) {
     this.db = new DatabaseSync(filename);
     this.db.exec('PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; CREATE TABLE IF NOT EXISTS records(kind TEXT NOT NULL, id TEXT PRIMARY KEY, data TEXT NOT NULL); CREATE TABLE IF NOT EXISTS metadata(key TEXT PRIMARY KEY, data TEXT NOT NULL);');
     if (!this.getMeta('user')) this.setMeta('user', { id: randomUUID(), name: 'Meg' });
-    if (!this.list('project').length) this.saveProject({ title: 'Mitt første prosjekt', description: 'Et sted for notater, kilder og spørsmål.', color: '#647a64' });
+    if (seedDefaultProject && !this.list('project').length) this.saveProject({ title: 'Mitt første prosjekt', description: 'Et sted for notater, kilder og spørsmål.', color: '#647a64' });
   }
   close() { this.db.close(); }
   getMeta(key) { const r = this.db.prepare('SELECT data FROM metadata WHERE key=?').get(key); return r ? JSON.parse(r.data) : null; }

@@ -117,6 +117,8 @@
 .brain-workspace .brain-graph-edge { fill: none; stroke: #cdb6e0; stroke-width: 2; }
 .brain-workspace .brain-graph-edge.card { stroke: #dfbdad; stroke-dasharray: 5 5; }
 .brain-workspace .brain-graph-node { cursor: pointer; outline: none; }
+.brain-workspace .brain-graph-node.dragging,
+.brain-workspace .brain-graph-node.dragging * { cursor: grabbing; }
 .brain-workspace .brain-node-shape { fill: #eee0f9; stroke: #c8b0db; stroke-width: 2; filter: drop-shadow(0 3px 0 #d7c7e4); }
 .brain-workspace .brain-node-icon { color: #af93c4; }
 .brain-workspace .brain-graph-node.source .brain-node-shape { fill: #e0ebf5; stroke: #b7c9db; }

@@ -5,7 +5,8 @@ import fs from 'node:fs/promises';
 import tls from 'node:tls';
 import { randomUUID } from 'node:crypto';
 import { Store } from './store.mjs';
-import { createSyncService } from './sync.mjs';
+import { createBrainSpaces } from './brain-spaces.mjs';
+import { createBrainCommands } from './brain-commands.mjs';
 import { createAiService } from './ai.mjs';
 import { importDocument } from './imports.mjs';
 import { searchSources } from './research.mjs';
@@ -21,7 +22,7 @@ const uiUrl = pathToFileURL(uiPath).href;
 if (process.env.SAMMEN_TEST_DATA) app.setPath('userData', path.resolve(process.env.SAMMEN_TEST_DATA));
 app.setName('Sammen');
 if (!process.env.SAMMEN_TEST_DATA && !app.requestSingleInstanceLock()) app.quit();
-let window, store, sync, ai, oneNote, remoteDevice, updates;
+let window, store, baseStore, spaces, brainCommands, sync, ai, oneNote, remoteDevice, updates;
 let quitting = false;
 let restartAfterUpdate = false, installingUpdate = false, updateTimer;
 const updatePreparation = createUpdatePreparation({ send: value => {
@@ -29,9 +30,11 @@ const updatePreparation = createUpdatePreparation({ send: value => {
   window.webContents.send('sammen:prepare-update', value);
 } });
 const activeChats = new Map();
-const notify = state => { if (window && !window.isDestroyed()) window.webContents.send('sammen:state', state); };
+const notify = state => { if (!brainCommands?.isBusy() && window && !window.isDestroyed()) window.webContents.send('sammen:state', state); };
+const scopedMethods = new Set(['saveProfile','saveProject','saveItem','deleteItem','saveCard','createChat','reviewCard','getSyncStatus','openSharedFile','updateSharedFile','closeSharedFile','startInternetRoom','startHosting','stopHosting','joinGroup','leaveGroup','importOneNotePages','addSource','importDocuments','openOriginal','exportProject','importProject','chat']);
+const writingMethods = new Set(['saveProject','saveItem','deleteItem','saveCard','createChat','updateSharedFile','importOneNotePages','addSource','importDocuments','importProject','chat']);
 function trusted(event) { if (event.senderFrame?.url !== uiUrl || event.sender !== window?.webContents) throw new Error('Denne handlingen er ikke tilgjengelig her.'); }
-function handle(method, callback) { ipcMain.handle(`sammen:${method}`, async (event, input) => { trusted(event); return callback(input); }); }
+function handle(method, callback) { ipcMain.handle(`sammen:${method}`, async (event, input) => { trusted(event); return scopedMethods.has(method) ? brainCommands.runScoped(() => callback(input), { write: writingMethods.has(method) }) : callback(input); }); }
 async function openExternal(value) {
   const url = new URL(value);
   if (!['https:', 'http:', 'onenote:'].includes(url.protocol) || url.username || url.password || value.length > 5000) throw new Error('Denne lenken kan ikke åpnes.');
@@ -47,7 +50,8 @@ async function saveSource(projectId, source, origin = 'web') {
   return sync.mutate('saveItem', { projectId, type: 'source', title: String(source.title || 'Uten tittel').slice(0,200), content: String(source.content || source.abstract || source.snippet || '').slice(0,250000), origin, sourceUrl: source.url || source.sourceUrl || '', sourceName: source.filename || source.provider || '', status: 'draft' });
 }
 async function configureIpc(directory) {
-  handle('getState', () => sync.state());
+  handle('getState', () => brainCommands.state());
+  for (const [method, callback] of Object.entries(brainCommands.methods)) handle(method, callback);
   handle('saveProfile', input => { store.saveProfile(input); const state = sync.state(); notify(state); return state; });
   for (const operation of ['saveProject','saveItem','deleteItem','saveCard','createChat']) {
     handle(operation, async input => { await sync.mutate(operation, input); return sync.state(); });
@@ -72,8 +76,8 @@ async function configureIpc(directory) {
   handle('getRemoteDeviceStatus', () => remoteDevice.status());
   handle('startRemoteDevice', () => remoteDevice.start());
   handle('stopRemoteDevice', () => remoteDevice.stop());
-  handle('getStartupOptions', () => ({ showDeviceSetup: app.isPackaged && !store.getMeta('deviceSetupShown') }));
-  handle('acknowledgeDeviceSetup', () => { store.setMeta('deviceSetupShown', true); return true; });
+  handle('getStartupOptions', () => ({ showDeviceSetup: app.isPackaged && !baseStore.getMeta('deviceSetupShown') }));
+  handle('acknowledgeDeviceSetup', () => { baseStore.setMeta('deviceSetupShown', true); return true; });
   handle('getSyncStatus', () => sync.status());
   handle('openSharedFile', input => sync.openSharedFile(input));
   handle('updateSharedFile', input => sync.updateSharedFile(input));
@@ -141,12 +145,12 @@ async function configureIpc(directory) {
   handle('chat', async ({ chatId, message, sourceIds = [] }) => {
     if (typeof message !== 'string' || !message.trim() || message.length > 12000 || !Array.isArray(sourceIds) || sourceIds.length > 30) throw new Error('Skriv en kortere melding og velg opptil 30 kilder.');
     if (activeChats.has(chatId)) throw new Error('Vent til svaret er ferdig.');
-    const before = sync.state(); const chat = before.chats.find(c => c.id === chatId); if (!chat) throw new Error('Samtalen finnes ikke.');
+    const before = sync.state(); const originBrainId = before.brainSpace?.activeId || 'personal'; const chat = before.chats.find(c => c.id === chatId); if (!chat) throw new Error('Samtalen finnes ikke.');
     const sources = [...new Set(sourceIds)].map(id => before.items.find(i => i.id === id && i.projectId === chat.projectId)).filter(Boolean).map(item => ({ id: item.id, title: `${item.origin === 'ai' ? '[KI-utkast] ' : ''}${item.title}`, content: item.type === 'mindmap' ? (item.mindmap?.nodes || []).map(n => n.text).join('\n') : item.content, url: item.sourceUrl }));
     const controller = new AbortController(); activeChats.set(chatId,controller);
     try {
       await sync.mutate('appendMessage', { chatId, message: { role: 'user', content: message.trim() } });
-      const result = await ai.generate({ messages: [...chat.messages.slice(-18).map(m => ({role:m.role,content:m.content})), {role:'user',content:message.trim()}], sources, signal: controller.signal, onDelta: delta => { if (window && !window.isDestroyed()) window.webContents.send('sammen:chat-delta',{chatId,delta}); } });
+      const result = await ai.generate({ messages: [...chat.messages.slice(-18).map(m => ({role:m.role,content:m.content})), {role:'user',content:message.trim()}], sources, signal: controller.signal, onDelta: delta => { if (window && !window.isDestroyed()) window.webContents.send('sammen:chat-delta',{brainId:originBrainId,chatId,delta}); } });
       await sync.mutate('appendMessage', { chatId, message: { role:'assistant',content:result.text,citations:result.citations,provider:result.provider,model:result.model } });
       await sync.mutate('saveItem', { projectId:chat.projectId,type:'ai',origin:'ai',status:'draft',title:`KI: ${message.trim().slice(0,130)}`,content:result.text,citations:result.citations,sourceName:`${result.provider} · ${result.model}` });
       return { state:sync.state(),result };
@@ -158,8 +162,10 @@ app.whenReady().then(async () => {
 // Windows enterprise roots are trusted without disabling TLS verification.
 if (tls.setDefaultCACertificates && tls.getCACertificates) tls.setDefaultCACertificates([...tls.getCACertificates('bundled'),...tls.getCACertificates('system')]);
 const directory = app.getPath('userData'); await fs.mkdir(directory,{recursive:true});
-store = new Store(path.join(directory,'brain.sqlite'));
-sync = createSyncService({store,onChange:notify,onCollaboration:value=>{ if (window && !window.isDestroyed()) window.webContents.send('sammen:file-collaboration', value); }});
+baseStore = new Store(path.join(directory,'brain.sqlite'));
+spaces = createBrainSpaces({ baseStore, directory, onChange: notify, onCollaboration: value => { if (window && !window.isDestroyed()) window.webContents.send('sammen:file-collaboration', value); } });
+store = spaces.store; sync = spaces.sync;
+brainCommands = createBrainCommands({ spaces, publicUrl: () => process.env.SAMMEN_PUBLIC_BRAIN_URL || '', cancelActive: async () => { for (const controller of activeChats.values()) controller.abort(); }, onChange: notify });
 ai = await createAiService({directory,encrypt:value=>{ if (!safeStorage.isEncryptionAvailable()) throw new Error('Windows kan ikke beskytte innloggingen.'); return safeStorage.encryptString(value); },decrypt:value=>safeStorage.decryptString(Buffer.from(value)),openExternal,fetchImpl:(...args)=>net.fetch(...args)});
 oneNote = createLocalOneNoteService({scriptPath:path.join(base.replace('app.asar','app.asar.unpacked'),'onenote-read.ps1')});
 remoteDevice = createRemoteDeviceService({
@@ -169,7 +175,7 @@ remoteDevice = createRemoteDeviceService({
 });
 const updateStatus = value => {
   if (window && !window.isDestroyed()) window.webContents.send('sammen:update-status', value);
-  if (installingUpdate && value.status === 'error') { quitting = false; restartAfterUpdate = false; installingUpdate = false; }
+  if (installingUpdate && value.status === 'error') { quitting = false; restartAfterUpdate = false; installingUpdate = false; void spaces.resume(); }
 };
 const installed = app.isPackaged && process.platform === 'win32' && await fs.access(path.join(path.dirname(app.getPath('exe')), 'Uninstall Sammen.exe')).then(() => true, () => false);
 if (installed) {
@@ -184,7 +190,7 @@ if (installed) {
 await configureIpc(directory);
 window = new BrowserWindow({width:1440,height:960,minWidth:1000,minHeight:700,title:'Sammen',backgroundColor:'#f7f8f3',show:!process.env.SAMMEN_HEADLESS,webPreferences:{preload:path.join(base,'preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:true}});
 window.on('close', event => {
-  if (!quitting && (remoteDevice.status().running || updates.status().status === 'downloaded')) { event.preventDefault(); app.quit(); }
+  if (!quitting) { event.preventDefault(); app.quit(); }
 });
 window.webContents.setWindowOpenHandler(()=>({action:'deny'}));
 window.webContents.on('will-navigate',event=>event.preventDefault());
@@ -220,8 +226,9 @@ app.on('before-quit', event => {
       return;
     }
     for (const controller of activeChats.values()) controller.abort();
-    await Promise.allSettled([remoteDevice?.stop(), sync?.stopHosting(), sync?.leaveGroup()]);
+    await Promise.all([remoteDevice?.stop(), spaces?.pause()]);
     if (remoteDevice?.status().running) {
+      await spaces.resume();
       quitting = false; restartAfterUpdate = false;
       dialog.showErrorBox('Agenten kjører fortsatt', 'PC-tilkoblingen kunne ikke stoppes. Prøv Stopp agenten under Profil → Denne PC-en før du lukker Sammen.');
       return;
@@ -230,6 +237,7 @@ app.on('before-quit', event => {
       installingUpdate = true;
       const started = updates.install({ restart: restartAfterUpdate });
       if (!started || updates.status().status === 'error') {
+        await spaces.resume();
         quitting = false; restartAfterUpdate = false;
         installingUpdate = false;
         dialog.showErrorBox('Oppdateringen kunne ikke installeres', 'Prøv igjen under Profil → Oppdateringer.');
@@ -237,8 +245,10 @@ app.on('before-quit', event => {
       return;
     }
     updates?.dispose();
+    await spaces.close();
     app.quit();
   })().catch(error => {
+    void spaces?.resume();
     quitting = false; restartAfterUpdate = false;
     dialog.showErrorBox('Sammen kunne ikke lukkes', error.message);
   });

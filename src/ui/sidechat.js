@@ -2,36 +2,43 @@
 
 (() => {
   const sessions = new Map();
-  let panel, toggle, nodes, open = false, projectId = null, lastMainProject;
+  let panel, toggle, nodes, open = false, projectId = null, lastMainProject, lastMainBrain;
   let settings = null, models = [], loading = false, accountBusy = false, modelBusy = false;
   let accountError = '', active = null, listSignature = '', contextSignature = '', messageSignature = '';
-  const draftStoragePrefix = 'sammen.sidechat.drafts.v1:';
+  const draftStoragePrefix = 'sammen.sidechat.drafts.v2:';
+  const legacyDraftStoragePrefix = 'sammen.sidechat.drafts.v1:';
 
+  function brainId() { return state.brainSpace?.activeId || 'personal'; }
+  function sessionKey(brain, project) { return JSON.stringify([brain, project]); }
   function sandbox() { return document.body.classList.contains('sandbox'); }
   function project() { return state.projects.find(value => value.id === projectId); }
-  function restoreSession(id) {
-    const value = { chatId: null, drafts: new Map(), sources: new Set(), error: '', storageError: '' };
+  function restoreSession(brain, id) {
+    const value = { brainId: brain, projectId: id, chatId: null, drafts: new Map(), sources: new Set(), error: '', storageError: '' };
     if (!id) return value;
     try {
-      const saved = JSON.parse(localStorage.getItem(draftStoragePrefix + encodeURIComponent(id)) || 'null');
-      if (saved?.version !== 1 || !Array.isArray(saved.drafts)) return value;
+      const raw = localStorage.getItem(draftStoragePrefix + encodeURIComponent(sessionKey(brain, id)));
+      const legacy = raw === null && brain === 'personal';
+      const saved = JSON.parse((legacy ? localStorage.getItem(legacyDraftStoragePrefix + encodeURIComponent(id)) : raw) || 'null');
+      if (!Array.isArray(saved?.drafts) || (legacy ? saved.version !== 1 : saved.version !== 2 || saved.brainId !== brain || saved.projectId !== id)) return value;
       if (typeof saved.chatId === 'string') value.chatId = saved.chatId;
       for (const entry of saved.drafts) {
         if (Array.isArray(entry) && typeof entry[0] === 'string' && typeof entry[1] === 'string' && entry[1].length <= 12000) value.drafts.set(entry[0], entry[1]);
       }
+      if (legacy) persistSession(value, true);
     } catch { value.storageError = 'Kunne ikke hente utkastet fra denne PC-en.'; }
     return value;
   }
-  function persistSession(id, value, strict = false) {
-    if (!id) return;
+  function persistSession(value, strict = false) {
+    if (!value.projectId) return;
     try {
       const drafts = new Map(value.drafts);
       // Keep an unanswered message recoverable if an update closes the app mid-response.
-      if (active?.projectId === id && !drafts.get(active.chatId || 'new')) drafts.set(active.chatId || 'new', active.pending);
-      const saved = { version: 1, chatId: value.chatId, drafts: [...drafts].filter(([, text]) => text) };
-      const key = draftStoragePrefix + encodeURIComponent(id);
+      if (active?.brainId === value.brainId && active.projectId === value.projectId && !drafts.get(active.chatId || 'new')) drafts.set(active.chatId || 'new', active.pending);
+      const saved = { version: 2, brainId: value.brainId, projectId: value.projectId, chatId: value.chatId, drafts: [...drafts].filter(([, text]) => text) };
+      const key = draftStoragePrefix + encodeURIComponent(sessionKey(value.brainId, value.projectId));
       if (saved.drafts.length) localStorage.setItem(key, JSON.stringify(saved));
       else localStorage.removeItem(key);
+      if (value.brainId === 'personal') localStorage.removeItem(legacyDraftStoragePrefix + encodeURIComponent(value.projectId));
       value.storageError = '';
     } catch {
       value.storageError = 'Utkastet kunne ikke lagres på denne PC-en. Behold appen åpen og kopier teksten før du oppdaterer.';
@@ -39,11 +46,12 @@
     }
   }
   function prepareForUpdate() {
-    for (const [id, value] of sessions) persistSession(id, value, true);
+    for (const value of sessions.values()) persistSession(value, true);
   }
-  function session() {
-    if (!sessions.has(projectId)) sessions.set(projectId, restoreSession(projectId));
-    return sessions.get(projectId);
+  function session(brain = brainId(), project = projectId) {
+    const key = sessionKey(brain, project);
+    if (!sessions.has(key)) sessions.set(key, restoreSession(brain, project));
+    return sessions.get(key);
   }
   function current() { return state.chats.find(chat => chat.id === session().chatId && chat.projectId === projectId); }
   function draftKey() { return session().chatId || 'new'; }
@@ -78,7 +86,7 @@
     nodes.history = el('select', { id: 'sidechat-history', 'aria-label': 'Velg samtale', onchange: event => {
       session().chatId = event.target.value || null;
       session().error = '';
-      persistSession(projectId, session());
+      persistSession(session());
       messageSignature = '';
       update();
     } });
@@ -86,7 +94,7 @@
       const value = session();
       if (!value.chatId) return nodes.draft.focus();
       value.chatId = null; value.error = '';
-      persistSession(projectId, value);
+      persistSession(value);
       messageSignature = '';
       update(); nodes.draft.focus();
     }, 'button-quiet sidechat-icon', 'add', { title: 'Ny samtale', 'aria-label': 'Ny samtale' });
@@ -119,7 +127,7 @@
     const context = el('details', { class: 'sidechat-context' }, nodes.sourceSummary, el('p', { class: 'sidechat-help' }, 'Bare valgte filer sendes. Opptil 30 per melding.'), nodes.sources);
     nodes.draft = el('textarea', { id: 'sidechat-draft', rows: 3, maxlength: 12000, 'aria-label': 'Melding til ChatGPT', placeholder: 'Spør om noe …', oninput: event => {
       session().drafts.set(draftKey(), event.target.value);
-      persistSession(projectId, session());
+      persistSession(session());
       updateControls();
     }, onkeydown: event => {
       if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); send(); }
@@ -133,7 +141,7 @@
     toggle.addEventListener('click', () => setOpen(!open));
     panel.addEventListener('keydown', event => { if (event.key === 'Escape' && !document.getElementById('modal-root')?.childElementCount) { event.preventDefault(); setOpen(false); } });
     if (typeof api?.onChatDelta === 'function') api.onChatDelta(payload => {
-      if (!active || payload?.chatId !== active.chatId || typeof payload.delta !== 'string') return;
+      if (!active || active.brainId !== brainId() || (payload?.brainId && payload.brainId !== active.brainId) || payload?.chatId !== active.chatId || typeof payload.delta !== 'string') return;
       active.text += payload.delta;
       if (open && current()?.id === active.chatId) renderMessages();
     });
@@ -201,7 +209,7 @@
     const chats = state.chats.filter(chat => chat.projectId === projectId).sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
     const value = session();
     if (value.chatId && !chats.some(chat => chat.id === value.chatId)) value.chatId = null;
-    const signature = JSON.stringify([projectId, state.projects.map(item => [item.id, item.title]), chats.map(chat => [chat.id, chat.title]), value.chatId]);
+    const signature = JSON.stringify([brainId(), projectId, state.projects.map(item => [item.id, item.title]), chats.map(chat => [chat.id, chat.title]), value.chatId]);
     if (signature === listSignature) return;
     listSignature = signature;
     nodes.project.replaceChildren(...(state.projects.length ? state.projects.map(item => el('option', { value: item.id }, item.title)) : [el('option', { value: '' }, 'Ingen prosjekter')]));
@@ -217,14 +225,14 @@
     const allowed = new Set(items.map(item => item.id));
     for (const selected of value.sources) if (!allowed.has(selected)) value.sources.delete(selected);
     nodes.sourceSummary.textContent = value.sources.size ? `Fra Brain · ${value.sources.size} valgt` : 'Fra Brain';
-    const signature = JSON.stringify([projectId, items.map(item => [item.id, item.title, item.origin]), [...value.sources], Boolean(active)]);
+    const signature = JSON.stringify([brainId(), projectId, items.map(item => [item.id, item.title, item.origin]), [...value.sources], Boolean(active)]);
     if (signature === contextSignature) return;
     contextSignature = signature;
     nodes.sources.replaceChildren(...(items.length ? items.map(item => el('label', { class: 'sidechat-source' }, el('input', { type: 'checkbox', checked: value.sources.has(item.id), disabled: Boolean(active), onchange: event => {
       if (event.target.checked && value.sources.size >= 30) { event.target.checked = false; return toast('Velg opptil 30 filer per melding.'); }
       event.target.checked ? value.sources.add(item.id) : value.sources.delete(item.id);
       nodes.sourceSummary.textContent = value.sources.size ? `Fra Brain · ${value.sources.size} valgt` : 'Fra Brain';
-      contextSignature = JSON.stringify([projectId, items.map(entry => [entry.id, entry.title, entry.origin]), [...value.sources], Boolean(active)]);
+      contextSignature = JSON.stringify([brainId(), projectId, items.map(entry => [entry.id, entry.title, entry.origin]), [...value.sources], Boolean(active)]);
     } }), el('span', {}, item.title, item.origin === 'ai' ? el('small', {}, 'KI-utkast') : null))) : [el('p', { class: 'sidechat-help' }, 'Ingen filer i dette prosjektet ennå.')]));
   }
   function messageNode(message, streaming = false) {
@@ -240,14 +248,15 @@
   }
   function renderMessages() {
     const chat = current();
-    const job = active?.chatId && active.chatId === chat?.id ? active : null;
+    const job = active?.brainId === brainId() && active.chatId && active.chatId === chat?.id ? active : null;
     const saved = chat?.messages || [];
-    const signature = JSON.stringify([projectId, chat?.id, saved.map(message => [message.id, message.content, message.citations]), job?.text, job?.pending, job?.starting]);
+    const signature = JSON.stringify([brainId(), projectId, chat?.id, saved.map(message => [message.id, message.content, message.citations]), job?.text, job?.pending, job?.starting]);
     if (signature === messageSignature) return;
     messageSignature = signature;
     const nearEnd = nodes.messages.scrollHeight - nodes.messages.scrollTop - nodes.messages.clientHeight < 90;
-    const changedChat = nodes.messages.dataset.chat !== (chat?.id || `${projectId}:new`);
-    nodes.messages.dataset.chat = chat?.id || `${projectId}:new`;
+    const chatKey = sessionKey(brainId(), [projectId, chat?.id || 'new']);
+    const changedChat = nodes.messages.dataset.chat !== chatKey;
+    nodes.messages.dataset.chat = chatKey;
     const content = saved.map(message => messageNode(message));
     if (job && !saved.some(message => message.role === 'user' && message.content === job.pending && !job.savedIds?.has(message.id))) content.push(messageNode({ role: 'user', content: job.pending }));
     if (job && !saved.some(message => message.role === 'assistant' && !job.savedIds?.has(message.id))) content.push(messageNode({ role: 'assistant', content: job.text }, true));
@@ -257,54 +266,66 @@
   }
   function updateControls() {
     if (!nodes) return;
-    const pendingHere = active && active.projectId === projectId;
+    const activeBrain = active?.brainId === brainId();
+    const pendingHere = activeBrain && active.projectId === projectId;
     const text = draft();
     if (nodes.draft.value !== text) nodes.draft.value = text;
     nodes.draft.disabled = !project();
     nodes.send.disabled = !project() || !ready() || !text.trim() || Boolean(active) || loading || accountBusy || modelBusy;
     nodes.newChat.disabled = !project();
-    nodes.stop.hidden = !active;
+    nodes.stop.hidden = !activeBrain;
     nodes.stop.disabled = Boolean(active?.cancelling || active?.starting);
     nodes.stop.textContent = active?.cancelling ? 'Stopper …' : 'Stopp';
-    nodes.status.textContent = active ? (active.starting ? 'Åpner samtalen …' : active.cancelling ? 'Avbryter …' : pendingHere ? 'Skriver …' : 'Et svar pågår …') : sandbox() ? 'Windows-appen for KI-svar' : ready() ? '' : 'Logg inn og velg modell';
-    nodes.activity.hidden = !active || pendingHere;
-    if (active && !pendingHere) nodes.activity.replaceChildren(el('span', {}, `Svarer i ${projectTitle(active.projectId)}.`), btn('Vis', () => {
-      const value = sessions.get(active.projectId);
-      if (value) value.chatId = active.chatId;
-      selectProject(active.projectId);
-    }, 'button-text button-small'));
+    nodes.status.textContent = active ? (!activeBrain ? 'Avslutter forrige Brain …' : active.starting ? 'Åpner samtalen …' : active.cancelling ? 'Avbryter …' : pendingHere ? 'Skriver …' : 'Et svar pågår …') : sandbox() ? 'Windows-appen for KI-svar' : ready() ? '' : 'Logg inn og velg modell';
+    nodes.activity.hidden = !activeBrain || pendingHere;
+    if (activeBrain && !pendingHere) {
+      const job = active;
+      nodes.activity.replaceChildren(el('span', {}, `Svarer i ${projectTitle(job.projectId)}.`), btn('Vis', () => {
+        if (active !== job || job.brainId !== brainId()) return;
+        session(job.brainId, job.projectId).chatId = job.chatId;
+        selectProject(job.projectId);
+      }, 'button-text button-small'));
+    }
     nodes.error.textContent = session().error || session().storageError;
     nodes.error.hidden = !nodes.error.textContent;
   }
   async function send() {
     if (!project() || !draft().trim() || !ready() || active || accountBusy || loading || modelBusy) return;
-    const originProject = projectId, value = session(), oldDraftKey = draftKey(), message = draft().trim();
+    const originBrain = brainId(), originProject = projectId, value = session(), oldDraftKey = draftKey(), message = draft().trim();
     const sourceIds = [...value.sources];
-    const job = { projectId: originProject, chatId: value.chatId, pending: message, text: '', starting: true, cancelling: false };
+    const job = { brainId: originBrain, projectId: originProject, chatId: value.chatId, pending: message, text: '', starting: true, cancelling: false };
+    const inOriginBrain = () => brainId() === originBrain;
+    const requireOrigin = () => { if (!inOriginBrain()) throw new Error('Brain ble byttet. Meldingen er bevart som utkast.'); };
     value.drafts.set(oldDraftKey, '');
-    active = job; value.error = ''; persistSession(originProject, value); update();
+    active = job; value.error = ''; persistSession(value); update();
     try {
       if (!job.chatId) {
         const oldIds = new Set(state.chats.map(chat => chat.id));
         const response = await invoke('createChat', { projectId: originProject });
         const snapshot = normalizeState(response);
+        if (snapshot?.brainSpace?.activeId && snapshot.brainSpace.activeId !== originBrain) throw new Error('Svaret tilhører en annen Brain. Meldingen er bevart som utkast.');
         const created = snapshot?.chats.find(chat => chat.projectId === originProject && !oldIds.has(chat.id));
         if (!created) throw new Error('Kunne ikke opprette samtalen.');
         job.chatId = created.id;
-        // A project switch while creation is in flight must not select this chat elsewhere.
+        // This session always belongs to the Brain where the request started.
         if (value.chatId === null) value.chatId = created.id;
         value.drafts.set(created.id, value.drafts.get(oldDraftKey) || '');
         value.drafts.delete(oldDraftKey);
-        persistSession(originProject, value);
+        persistSession(value);
+        requireOrigin();
         applyState(response);
       }
+      requireOrigin();
       const selected = state.chats.find(chat => chat.id === job.chatId && chat.projectId === originProject);
       if (!selected) throw new Error('Samtalen finnes ikke lenger.');
       job.savedIds = new Set(selected.messages.map(item => item.id));
       job.starting = false;
       update();
       const response = await invoke('chat', { chatId: job.chatId, message, sourceIds });
-      active = null;
+      requireOrigin();
+      const responseBrain = normalizeState(response)?.brainSpace?.activeId;
+      if (responseBrain && responseBrain !== originBrain) throw new Error('Svaret tilhører en annen Brain. Meldingen er bevart som utkast.');
+      if (active === job) active = null;
       applyState(response);
     } catch (error) {
       if (active === job) active = null;
@@ -314,21 +335,28 @@
       if (!value.drafts.get(key)) value.drafts.set(key, message);
     } finally {
       if (active === job) active = null;
-      persistSession(originProject, value);
+      persistSession(value);
       messageSignature = '';
       update();
     }
   }
   async function cancel() {
     const job = active;
-    if (!job?.chatId || job.starting || job.cancelling) return;
+    if (!job?.chatId || job.brainId !== brainId() || job.starting || job.cancelling) return;
     job.cancelling = true; updateControls();
     try { await invoke('cancelChat', { chatId: job.chatId }); }
-    catch (error) { if (active === job) { job.cancelling = false; sessions.get(job.projectId).error = errorText(error); update(); } }
+    catch (error) { if (active === job) { job.cancelling = false; session(job.brainId, job.projectId).error = errorText(error); update(); } }
   }
   function update() {
     init();
     if (!panel) return;
+    const currentBrain = brainId();
+    if (lastMainBrain !== currentBrain) {
+      lastMainBrain = currentBrain;
+      lastMainProject = undefined;
+      projectId = null;
+      listSignature = contextSignature = messageSignature = '';
+    }
     if (lastMainProject !== ui.projectId) {
       lastMainProject = ui.projectId;
       if (state.projects.some(item => item.id === ui.projectId)) projectId = ui.projectId;

@@ -88,6 +88,9 @@ function projectTitle(projectId) { return state.projects.find(p => p.id === proj
 function itemsForProject() { return state.items.filter(item => !ui.projectId || item.projectId === ui.projectId); }
 function cardsForProject() { return state.flashcards.filter(card => !ui.projectId || card.projectId === ui.projectId); }
 function chatsForProject() { return state.chats.filter(chat => !ui.projectId || chat.projectId === ui.projectId); }
+function activeBrain() { return state.brainSpace?.brains?.find(brain => brain.id === state.brainSpace.activeId) || { id: 'personal', isPersonal: true }; }
+function brainReadOnly() { return activeBrain().isPublic && !(ui.sync || state.sync)?.isPublic; }
+function canCreateProjects() { const sync = ui.sync || state.sync; return !brainReadOnly() && (sync.mode !== 'client' || sync.scope === 'brain'); }
 function dateText(value) {
   if (!value) return '';
   const date = new Date(value);
@@ -132,6 +135,8 @@ function normalizeState(value) {
 function applyState(value, options = {}) {
   const next = normalizeState(value);
   if (!next) return;
+  // Only the explicit switch flow may replace the selected workspace.
+  if (!options.force && state.brainSpace && next.brainSpace && state.brainSpace.activeId !== next.brainSpace.activeId) return;
   state = next;
   if (state.sync) ui.sync = state.sync;
   if (ui.projectId && !state.projects.some(p => p.id === ui.projectId)) ui.projectId = null;
@@ -157,7 +162,7 @@ function preserveFocus(callback) {
   }
 }
 function go(view, projectId = ui.projectId, itemId = null) {
-  if (window.SammenSharing?.isBusy?.()) return;
+  if (window.SammenSharing?.isBusy?.() || window.SammenBrainSpaces?.isBusy?.()) return;
   if (!navViews.some(([key]) => key === view)) return;
   const proceed = () => {
     if (editor?.id !== itemId || view !== 'brain' || projectId !== ui.projectId) window.SammenLiveFile?.detach?.();
@@ -195,12 +200,14 @@ function renderShell() {
   document.getElementById('profile-avatar').textContent = name.charAt(0).toUpperCase();
   const sync = ui.sync || state.sync;
   window.SammenSharing?.update?.(sync);
+  window.SammenBrainSpaces?.update?.();
   document.getElementById('sidebar-mode').textContent = sync.mode === 'host' ? 'Deler' : sync.mode === 'client' ? sync.error ? 'Frakoblet' : 'Tilkoblet' : 'Lokalt';
   document.getElementById('sidebar-storage').textContent = sync.mode === 'host' ? 'Deler' : sync.mode === 'client' ? sync.error ? 'Frakoblet' : 'Felles' : 'Lokalt';
   document.getElementById('profile-button').title = name;
   document.getElementById('profile-button').setAttribute('aria-label', `Profil: ${name}`);
-  document.getElementById('sidebar-add-project').disabled = sync.mode === 'client';
-  document.getElementById('sidebar-add-project').title = sync.mode === 'client' ? 'Forlat gruppen for å åpne dine egne prosjekter.' : 'Nytt prosjekt';
+  document.getElementById('sidebar-add-project').disabled = !canCreateProjects();
+  document.getElementById('global-import').disabled = Boolean(brainReadOnly());
+  document.getElementById('sidebar-add-project').title = brainReadOnly() ? 'Koble til Offentlig Brain først.' : !canCreateProjects() ? 'Du er med i ett delt prosjekt.' : 'Nytt prosjekt';
   const clientTitle = document.getElementById('client-sync-title');
   if (clientTitle && sync.mode === 'client') clientTitle.textContent = sync.error ? 'Forbindelsen til verten er brutt' : 'Du er med i et felles prosjekt';
   const clientError = document.getElementById('sync-connection-error');
@@ -242,13 +249,13 @@ function renderOverview() {
     el('div', { class: 'stat-aside' }, el('span', { class: 'stat-icon' }, icon(iconName, 18)), note)
   ));
   page.append(el('div', { class: 'stats-row' }, statCards));
-  page.append(el('div', { class: 'section-heading' }, el('h2', {}, 'Prosjekter'), btn('Nytt prosjekt', newProjectModal, 'button-text', 'add', { disabled: (ui.sync || state.sync).mode === 'client' })));
+  page.append(el('div', { class: 'section-heading' }, el('h2', {}, 'Prosjekter'), btn('Nytt prosjekt', newProjectModal, 'button-text', 'add', { disabled: !canCreateProjects() })));
   const projects = project ? [project] : state.projects;
   const projectCards = projects.map(p => {
     const count = state.items.filter(item => item.projectId === p.id).length;
     return el('button', { class: 'project-card', 'data-color': colorName(p.color), onclick: () => go('brain', p.id) }, el('span', { class: 'project-arrow' }, '↗'), el('span', { class: 'project-card-icon' }, icon('book', 17)), el('h3', {}, p.title), p.description ? el('p', {}, p.description) : null, el('div', { class: 'project-card-footer' }, el('span', {}, `${count} ${count === 1 ? 'element' : 'elementer'}`), el('span', {}, relativeDate(p.updatedAt))));
   });
-  if (projects.length < 3 && (ui.sync || state.sync).mode !== 'client') projectCards.push(el('button', { class: 'project-card project-add-card', onclick: newProjectModal }, icon('add', 25), el('span', {}, 'Opprett prosjekt')));
+  if (projects.length < 3 && canCreateProjects()) projectCards.push(el('button', { class: 'project-card project-add-card', onclick: newProjectModal }, icon('add', 25), el('span', {}, 'Opprett prosjekt')));
   page.append(el('div', { class: 'projects-grid' }, projectCards));
   const recent = [...items].sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt)).slice(0, 5);
   const recentPanel = el('section', {}, el('div', { class: 'section-heading' }, el('h2', {}, 'Sist i Brain'), btn('Åpne Brain', () => go('brain'), 'button-text', 'arrow')),
@@ -815,7 +822,7 @@ function openModal(title, description, content, className = '') {
   modal.querySelector('input,textarea,select,button')?.focus();
 }
 function closeModal() {
-  if (window.SammenSharing?.isBusy?.()) return;
+  if (window.SammenSharing?.isBusy?.() || window.SammenBrainSpaces?.isBusy?.()) return;
   const previous = document.querySelector('.modal')?.dataset.previousFocus;
   document.getElementById('modal-root').replaceChildren();
   if (modalEscape) { document.removeEventListener('keydown', modalEscape); modalEscape = null; }
@@ -827,7 +834,7 @@ function confirmModal(title, description, label, handler, options = {}) {
 }
 function newProjectModal(callback = null, options = {}) {
   if (typeof callback !== 'function') callback = null;
-  if ((ui.sync || state.sync).mode === 'client') return toast('Forlat gruppen for å åpne dine egne prosjekter.', true);
+  if (!canCreateProjects()) return toast(brainReadOnly() ? 'Koble til Offentlig Brain først.' : 'Denne forbindelsen deler bare ett prosjekt.', true);
   const title = el('input', { id: 'new-project-title', required: true, maxlength: 120, placeholder: 'F.eks. Politikk og menneskerettigheter' });
   const description = el('textarea', { id: 'new-project-description', maxlength: 1200, placeholder: 'Hva skal dere undersøke eller lære?' });
   let color = 'green';
@@ -844,7 +851,7 @@ function newProjectModal(callback = null, options = {}) {
       if (options.fromBrain) {
         ui.projectId = null; ui.itemId = null; ui.brainMode = 'graph';
         ui.brainFilter = 'all'; ui.brainQuery = '';
-        if (ui.brainCamera) delete ui.brainCamera[JSON.stringify(['*', 'all', ''])];
+        if (ui.brainCamera) delete ui.brainCamera[JSON.stringify([state.brainSpace?.activeId || 'personal', '*', 'all', ''])];
       } else if (projectId) ui.projectId = projectId;
       if (!callback) ui.view = 'brain';
       applyState(result);
@@ -864,6 +871,7 @@ function withProject(callback, title = 'Velg et prosjekt') {
   openModal(title, 'Innholdet blir samlet i prosjektet du velger.', form);
 }
 function newItem(type = 'note') {
+  if (brainReadOnly()) return toast('Koble til Offentlig Brain først.', true);
   if (editor?.dirty) return confirmModal('Lagre endringene først?', 'Du har et ulagret notat åpent.', 'Forkast og opprett', () => { editor = null; newItem(type); }, { secondaryLabel: 'Lagre og opprett', secondary: async () => { if (await saveEditor()) { editor = null; newItem(type); } } });
   withProject(async projectId => {
     try {

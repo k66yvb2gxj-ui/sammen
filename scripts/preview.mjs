@@ -5,7 +5,8 @@ import { fileURLToPath } from 'node:url';
 import { randomBytes } from 'node:crypto';
 import tls from 'node:tls';
 import { Store } from '../src/store.mjs';
-import { createSyncService } from '../src/sync.mjs';
+import { createBrainSpaces } from '../src/brain-spaces.mjs';
+import { createBrainCommands } from '../src/brain-commands.mjs';
 import { createUpdateService } from '../src/updates.mjs';
 
 if (tls.setDefaultCACertificates && tls.getCACertificates) tls.setDefaultCACertificates([...tls.getCACertificates('bundled'), ...tls.getCACertificates('system')]);
@@ -14,7 +15,8 @@ const updates = createUpdateService({ currentVersion: JSON.parse(await readFile(
 const updateStatus = value => ({ ...value, automatic: false, reason: 'Automatisk installasjon er tilgjengelig i den installerte Windows-appen.' });
 const profile = process.env.SAMMEN_PREVIEW_PROFILE || join(dirname(project), 'sandbox-preview-profile');
 await mkdir(profile, { recursive: true });
-const store = new Store(join(profile, 'brain.sqlite'));
+const baseStore = new Store(join(profile, 'brain.sqlite'));
+let store = baseStore;
 if (!store.getMeta('sandboxSeeded')) {
   store.saveProfile({ name: 'DEMO · Din profil' });
   const projectId = store.snapshot().projects[0].id;
@@ -47,14 +49,23 @@ if (!store.getMeta('sandboxProjectsSeeded')) {
 }
 if (process.env.SAMMEN_PREVIEW_NAME) store.saveProfile({ name: process.env.SAMMEN_PREVIEW_NAME });
 const fileEvents = [];
-const sync = createSyncService({ store, listenHost: '127.0.0.1', onCollaboration: payload => { fileEvents.push(payload); if (fileEvents.length > 300) fileEvents.shift(); } });
+const spaces = createBrainSpaces({ baseStore, directory: profile, syncOptions: { listenHost: '127.0.0.1' }, onCollaboration: payload => { fileEvents.push(payload); if (fileEvents.length > 300) fileEvents.shift(); } });
+store = spaces.store;
+const sync = spaces.sync;
+const brainCommands = createBrainCommands({ spaces, publicUrl: () => process.env.SAMMEN_PUBLIC_BRAIN_URL || '' });
 const snapshot = () => {
-  const state = sync.state();
+  const state = brainCommands.state();
   return { ...state, items: state.items.map(item => ({ ...item, originalAvailable: false })) };
 };
-let settings = store.getMeta('sandboxAiSettings') || { provider: 'chatgpt', model: 'gpt-6-luna', baseUrl: 'http://127.0.0.1:11434', chatgpt: { connected: false, enabled: false, email: null } };
+let settings = baseStore.getMeta('sandboxAiSettings') || { provider: 'chatgpt', model: 'gpt-6-luna', baseUrl: 'http://127.0.0.1:11434', chatgpt: { connected: false, enabled: false, email: null } };
 const blocked = () => { throw new Error('Denne funksjonen brukes i Windows-appen. Sandboxen er et separat rom for å finpusse grensesnittet.'); };
+const scopedMethods = new Set(['saveProfile','saveProject','saveItem','deleteItem','saveCard','reviewCard','createChat','startHosting','stopHosting','joinGroup','leaveGroup','startInternetRoom','openSharedFile','updateSharedFile','closeSharedFile']);
+const writingMethods = new Set(['saveProject','saveItem','deleteItem','saveCard','createChat','updateSharedFile']);
 async function invoke(method, input) {
+  if (Object.hasOwn(brainCommands.methods, method)) { const result = await brainCommands.methods[method](input); fileEvents.length = 0; return result; }
+  return scopedMethods.has(method) ? brainCommands.runScoped(() => dispatch(method, input), { write: writingMethods.has(method) }) : dispatch(method, input);
+}
+async function dispatch(method, input) {
   switch (method) {
     case 'getState': return snapshot();
     case 'saveProfile': store.saveProfile(input); return snapshot();
@@ -70,7 +81,7 @@ async function invoke(method, input) {
     case 'updateAiSettings': {
       if (!['chatgpt', 'ollama'].includes(input?.provider)) throw new Error('Velg en KI-forbindelse.');
       settings = { provider: input.provider, model: String(input.model || '').slice(0, 180), baseUrl: String(input.baseUrl || settings.baseUrl).slice(0, 500), chatgpt: { connected: false, enabled: false, email: null } };
-      store.setMeta('sandboxAiSettings', settings); return settings;
+      baseStore.setMeta('sandboxAiSettings', settings); return settings;
     }
     case 'listModels': return [];
     case 'getSyncStatus': return sync.status();
@@ -91,7 +102,7 @@ const bridge = () => `
 (() => {
   const token = ${JSON.stringify(token)};
   const listeners = new Set(), fileListeners = new Set();
-  const names = ['getState','saveProfile','saveProject','saveItem','deleteItem','saveCard','reviewCard','createChat','chat','cancelChat','getAiSettings','getUpdateStatus','checkForUpdates','installUpdate','updateAiSettings','connectChatGPT','disconnectChatGPT','listModels','importDocuments','searchSources','addSource','exportProject','importProject','getSyncStatus','startHosting','stopHosting','joinGroup','leaveGroup','startInternetRoom','openSharedFile','updateSharedFile','closeSharedFile','getIntegrationInfo','doctorOneNote','listOneNotePages','importOneNotePages','openOriginal','getRemoteDeviceStatus','startRemoteDevice','stopRemoteDevice'];
+  const names = ['getState','getBrainSpaces','switchBrain','createBrain','joinBrain','connectPublicBrain','startBrainHosting','startInternetBrain','saveProfile','saveProject','saveItem','deleteItem','saveCard','reviewCard','createChat','chat','cancelChat','getAiSettings','getUpdateStatus','checkForUpdates','installUpdate','updateAiSettings','connectChatGPT','disconnectChatGPT','listModels','importDocuments','searchSources','addSource','exportProject','importProject','getSyncStatus','startHosting','stopHosting','joinGroup','leaveGroup','startInternetRoom','openSharedFile','updateSharedFile','closeSharedFile','getIntegrationInfo','doctorOneNote','listOneNotePages','importOneNotePages','openOriginal','getRemoteDeviceStatus','startRemoteDevice','stopRemoteDevice'];
   let lastState = '';
   let polling = false;
   async function call(method, input) {
@@ -120,7 +131,7 @@ const bridge = () => `
   }, 700);
 })();
 `;
-const files = new Map([['/', ['index.html','text/html']], ['/index.html', ['index.html','text/html']], ...['app', 'brain', 'mindmap', 'study', 'file-sources', 'sharing', 'live-file', 'collaboration-model','device-setup','sidechat','updates'].map(name => ['/' + name + '.js', [name + '.js', 'text/javascript']]), ...['styles', 'minimal', 'brain', 'mindmap', 'study', 'file-sources', 'sharing', 'live-file','device-setup','sidechat','updates'].map(name => ['/' + name + '.css', [name + '.css', 'text/css']])]);
+const files = new Map([['/', ['index.html','text/html']], ['/index.html', ['index.html','text/html']], ...['app', 'brain-physics', 'brain-spaces', 'brain', 'mindmap', 'study', 'file-sources', 'sharing', 'live-file', 'collaboration-model','device-setup','sidechat','updates'].map(name => ['/' + name + '.js', [name + '.js', 'text/javascript']]), ...['styles', 'minimal', 'brain-spaces', 'brain', 'mindmap', 'study', 'file-sources', 'sharing', 'live-file','device-setup','sidechat','updates'].map(name => ['/' + name + '.css', [name + '.css', 'text/css']])]);
 const server = createServer(async (request, response) => {
   if (request.headers.host !== '127.0.0.1:' + port) { response.writeHead(403).end(); return; }
   const url = new URL(request.url, 'http://127.0.0.1:' + port);
@@ -149,5 +160,5 @@ const server = createServer(async (request, response) => {
 });
 await new Promise(resolve => server.listen(Number(process.env.SAMMEN_PREVIEW_PORT) || 0, '127.0.0.1', resolve));
 port = server.address().port;
-console.log('SAMMEN_SANDBOX_READY ' + JSON.stringify({ url: 'http://127.0.0.1:' + port, profile, projectId: store.snapshot().projects[0].id }));
-for (const signal of ['SIGTERM','SIGINT']) process.on(signal, async () => { await sync.leaveGroup(); await sync.stopHosting(); server.close(() => { store.close(); process.exit(0); }); });
+console.log('SAMMEN_SANDBOX_READY ' + JSON.stringify({ url: 'http://127.0.0.1:' + port, profile, projectId: store.snapshot().projects[0]?.id || null }));
+for (const signal of ['SIGTERM','SIGINT']) process.on(signal, async () => { server.closeAllConnections(); await spaces.close(); server.close(() => process.exit(0)); });

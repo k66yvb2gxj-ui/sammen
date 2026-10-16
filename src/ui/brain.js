@@ -6,6 +6,8 @@
   const kindIcon = item => isAi(item) ? 'sparkle' : item.type === 'source' ? 'globe' : item.type === 'mindmap' ? 'map' : 'file';
   const projectName = projectId => state.projects.find(project => project.id === projectId)?.title || 'Prosjekt';
   let graphController = null;
+  const nodeMemory = new Map();
+  const MIN_ZOOM = .03, MAX_ZOOM = 8, ZOOM_STEP = 1.5;
   const clamp = (value, minimum, maximum) => Math.max(minimum, Math.min(maximum, value));
 
   function fitCamera(bounds, width, height, padding = 48) {
@@ -13,7 +15,7 @@
   }
 
   function zoomAt(camera, factor, point, width, height) {
-    const zoom = clamp(camera.zoom * factor, .04, 6);
+    const zoom = clamp(camera.zoom * factor, MIN_ZOOM, MAX_ZOOM);
     const worldX = camera.cx + (point.x - width / 2) / camera.zoom;
     const worldY = camera.cy + (point.y - height / 2) / camera.zoom;
     return { ...camera, zoom, cx: worldX - (point.x - width / 2) / zoom, cy: worldY - (point.y - height / 2) / zoom };
@@ -76,9 +78,9 @@
         el('select', { id: 'brain-filter', class: 'brain-filter', 'aria-label': 'Filtrer grafen', value: ui.brainFilter, onchange: event => { ui.brainFilter = event.target.value; renderMain(); } }, filters.map(([key, title]) => el('option', { value: key }, title)))),
       el('div', { class: 'brain-graph-tools' },
         el('div', { class: 'brain-zoom-tools', 'aria-label': 'Grafvisning' },
-          el('button', { type: 'button', class: 'brain-zoom-button', title: 'Zoom ut (−)', 'aria-label': 'Zoom ut', onclick: () => cameraActions.zoomBy(1 / 1.25) }, '−'),
+          el('button', { type: 'button', class: 'brain-zoom-button', title: 'Zoom ut (−)', 'aria-label': 'Zoom ut', onclick: () => cameraActions.zoomBy(1 / ZOOM_STEP) }, '−'),
           el('output', { class: 'brain-zoom-level', 'aria-label': 'Zoomnivå' }, '100%'),
-          el('button', { type: 'button', class: 'brain-zoom-button', title: 'Zoom inn (+)', 'aria-label': 'Zoom inn', onclick: () => cameraActions.zoomBy(1.25) }, '+'),
+          el('button', { type: 'button', class: 'brain-zoom-button', title: 'Zoom inn (+)', 'aria-label': 'Zoom inn', onclick: () => cameraActions.zoomBy(ZOOM_STEP) }, '+'),
           el('button', { type: 'button', class: 'brain-fit-button', title: 'Tilpass grafen (0)', 'aria-label': 'Tilpass grafen', onclick: () => cameraActions.fit() }, 'Tilpass')),
         el('span', { class: 'brain-graph-stats', title: `${data.nodes.length} noder · ${data.edges.length} koblinger` }, `${data.nodes.length} noder`),
         el('button', { type: 'button', class: 'brain-toolbar-action', title: 'Nytt notat', 'aria-label': 'Nytt notat', onclick: () => newItem('note') }, icon('add', 16), 'Notat'),
@@ -184,8 +186,8 @@
     return { dispose };
   }
 
-  function mountCamera(viewport, svg, world, titles, layout, cameraActions, readout) {
-    const key = JSON.stringify([ui.projectId || '*', ui.brainFilter || 'all', (ui.brainQuery || '').trim().toLocaleLowerCase('nb-NO')]);
+  function mountCamera(viewport, svg, world, titles, layout, cameraActions, readout, physics) {
+    const key = JSON.stringify([state.brainSpace?.activeId || 'personal', ui.projectId || '*', ui.brainFilter || 'all', (ui.brainQuery || '').trim().toLocaleLowerCase('nb-NO')]);
     ui.brainCamera ||= {};
     const camera = ui.brainCamera[key] ||= { cx: 0, cy: 0, zoom: 1, autoFit: true, width: 0, height: 0 };
     const layoutBounds = JSON.stringify(layout.bounds);
@@ -193,9 +195,77 @@
     const keys = Object.keys(ui.brainCamera);
     if (keys.length > 40) for (const oldKey of keys.slice(0, keys.length - 40)) if (oldKey !== key) delete ui.brainCamera[oldKey];
     let disposed = false, drag = null, suppressClickUntil = 0, suppressMenuUntil = 0, animationFrame = 0;
+    let cameraFrame = 0, physicsFrame = 0, lastCameraTime = 0, lastPhysicsTime = 0, physicsTime = 0, physicsActive = true, zoomAnchor = null;
+    const target = { ...camera };
+    const motion = window.matchMedia('(prefers-reduced-motion: reduce)');
     let resizeObserver = null, removalObserver = null;
-    const projectMenu = mountProjectMenu(viewport, () => !drag?.moved && performance.now() >= suppressMenuUntil);
+    const projectMenu = mountProjectMenu(viewport, () => canCreateProjects() && !drag?.moved && performance.now() >= suppressMenuUntil);
     const pointAt = event => { const rect = viewport.getBoundingClientRect(); return { x: event.clientX - rect.left, y: event.clientY - rect.top }; };
+    const worldAt = point => ({ x: camera.cx + (point.x - camera.width / 2) / camera.zoom, y: camera.cy + (point.y - camera.height / 2) / camera.zoom });
+
+    function stopCamera() {
+      cancelAnimationFrame(cameraFrame); cameraFrame = 0; lastCameraTime = 0; zoomAnchor = null;
+      Object.assign(target, camera);
+    }
+
+    function animateCamera(time) {
+      cameraFrame = 0;
+      if (disposed || !viewport.isConnected) return;
+      const elapsed = lastCameraTime ? clamp(time - lastCameraTime, 1, 48) : 16;
+      lastCameraTime = time;
+      const blend = 1 - Math.exp(-elapsed / 62);
+      camera.zoom = Math.exp(Math.log(camera.zoom) + (Math.log(target.zoom) - Math.log(camera.zoom)) * blend);
+      if (zoomAnchor) {
+        camera.cx = zoomAnchor.world.x - (zoomAnchor.point.x - camera.width / 2) / camera.zoom;
+        camera.cy = zoomAnchor.world.y - (zoomAnchor.point.y - camera.height / 2) / camera.zoom;
+      } else {
+        camera.cx += (target.cx - camera.cx) * blend;
+        camera.cy += (target.cy - camera.cy) * blend;
+      }
+      camera.autoFit = target.autoFit;
+      const complete = Math.abs(Math.log(target.zoom / camera.zoom)) < .0003 && Math.hypot(target.cx - camera.cx, target.cy - camera.cy) * camera.zoom < .2;
+      if (complete) { Object.assign(camera, target); lastCameraTime = 0; zoomAnchor = null; }
+      paint();
+      if (!complete) cameraFrame = requestAnimationFrame(animateCamera);
+    }
+
+    function moveCamera() {
+      if (motion.matches) { Object.assign(camera, target); paint(); }
+      else if (!cameraFrame) cameraFrame = requestAnimationFrame(animateCamera);
+    }
+
+    function animatePhysics(time) {
+      physicsFrame = 0;
+      if (disposed || !viewport.isConnected || document.hidden) return;
+      physicsTime += lastPhysicsTime ? clamp(time - lastPhysicsTime, 0, 48) : 1000 / 60;
+      lastPhysicsTime = time;
+      for (let steps = 0; physicsTime >= 1000 / 60 && steps < 3; steps++) {
+        physicsActive = physics.simulation.step();
+        physicsTime -= 1000 / 60;
+        if (!physicsActive) break;
+      }
+      physics.paint();
+      viewport.dataset.physics = physicsActive ? 'moving' : 'settled';
+      if (physicsActive) physicsFrame = requestAnimationFrame(animatePhysics);
+      else { lastPhysicsTime = 0; physicsTime = 0; physics.save(); }
+    }
+
+    function wakePhysics() {
+      physicsActive = true;
+      if (motion.matches) { physics.simulation.settle(120); physics.paint(); physics.save(); viewport.dataset.physics = 'settled'; }
+      else if (!physicsFrame && !document.hidden) physicsFrame = requestAnimationFrame(animatePhysics);
+    }
+
+    function visibilityChange() {
+      if (document.hidden) { cancelAnimationFrame(physicsFrame); physicsFrame = 0; lastPhysicsTime = 0; }
+      else if (physicsActive) wakePhysics();
+    }
+
+    function motionChange() {
+      if (!motion.matches) return;
+      cancelAnimationFrame(cameraFrame); cameraFrame = 0; Object.assign(camera, target); paint();
+      cancelAnimationFrame(physicsFrame); physicsFrame = 0; wakePhysics();
+    }
 
     function paint() {
       if (disposed || !camera.width || !camera.height) return;
@@ -222,33 +292,45 @@
       const width = viewport.clientWidth, height = viewport.clientHeight;
       if (!width || !height) return;
       const changed = camera.width !== width || camera.height !== height;
+      if (changed) stopCamera();
       camera.width = width; camera.height = height;
-      if (camera.autoFit && (changed || camera.layoutBounds !== layoutBounds)) Object.assign(camera, fitCamera(layout.bounds, width, height));
+      if (camera.autoFit && (changed || camera.layoutBounds !== layoutBounds)) { stopCamera(); Object.assign(camera, fitCamera(layout.bounds, width, height)); }
+      Object.assign(target, { width, height });
+      if (!cameraFrame) Object.assign(target, camera);
       camera.layoutBounds = layoutBounds;
       paint();
     }
 
     function zoomBy(factor, point = { x: camera.width / 2, y: camera.height / 2 }) {
       if (disposed) return;
-      Object.assign(camera, zoomAt(camera, factor, point, camera.width, camera.height), { autoFit: false });
-      paint();
+      const worldPoint = worldAt(point), zoom = clamp(target.zoom * factor, MIN_ZOOM, MAX_ZOOM);
+      zoomAnchor = { point, world: worldPoint };
+      Object.assign(target, { zoom, cx: worldPoint.x - (point.x - camera.width / 2) / zoom, cy: worldPoint.y - (point.y - camera.height / 2) / zoom, autoFit: false });
+      moveCamera();
     }
 
     function fit() {
       if (disposed) return;
-      Object.assign(camera, fitCamera(layout.bounds, camera.width, camera.height), { autoFit: true });
-      paint();
+      zoomAnchor = null;
+      const bounds = { ...layout.bounds };
+      for (const point of layout.positions.values()) { bounds.left = Math.min(bounds.left, point.x - 100); bounds.right = Math.max(bounds.right, point.x + 100); bounds.top = Math.min(bounds.top, point.y - 60); bounds.bottom = Math.max(bounds.bottom, point.y + 70); }
+      Object.assign(target, fitCamera(bounds, camera.width, camera.height), { autoFit: true });
+      moveCamera();
     }
 
     function wheel(event) {
       event.preventDefault();
-      const delta = clamp(event.deltaY * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? camera.height : 1), -600, 600);
-      zoomBy(Math.exp(-delta * .0015), pointAt(event));
+      if (drag?.moved) return;
+      const delta = clamp(event.deltaY * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? camera.height : 1), -180, 180);
+      zoomBy(Math.exp(-delta * (event.ctrlKey ? .009 : .005)), pointAt(event));
     }
 
     function pointerDown(event) {
-      if (event.button !== 0 || event.target.closest('.brain-graph-node, .brain-empty-project, .brain-project-menu')) return;
-      drag = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, camera: { ...camera }, moved: false };
+      if (event.button !== 0 || drag || event.target.closest('.brain-empty-project, .brain-project-menu')) return;
+      const node = event.target.closest('.brain-graph-node');
+      const nodeKey = node?.dataset.nodeKey, point = layout.positions.get(nodeKey);
+      stopCamera();
+      drag = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, camera: { ...camera }, nodeKey: point ? nodeKey : null, point: point ? { ...point } : null, element: node, moved: false };
     }
 
     function pointerMove(event) {
@@ -258,20 +340,32 @@
       if (!drag.moved) {
         drag.moved = true;
         try { viewport.setPointerCapture(event.pointerId); } catch {}
-        viewport.classList.add('panning');
+        viewport.classList.add(drag.nodeKey ? 'dragging-node' : 'panning');
+        drag.element?.classList.add('dragging');
+        camera.autoFit = target.autoFit = false;
       }
       event.preventDefault();
-      Object.assign(camera, panCamera(drag.camera, dx, dy), { autoFit: false });
-      paint();
+      if (drag.nodeKey) {
+        physics.simulation.pin(drag.nodeKey, drag.point.x + dx / camera.zoom, drag.point.y + dy / camera.zoom);
+        physics.paint(); wakePhysics();
+      } else {
+        Object.assign(camera, panCamera(drag.camera, dx, dy), { autoFit: false });
+        Object.assign(target, camera); paint();
+      }
     }
 
     function pointerEnd(event) {
       if (!drag || event.pointerId !== drag.pointerId) return;
       if (drag.moved) suppressClickUntil = suppressMenuUntil = performance.now() + 250;
-      try { if (viewport.hasPointerCapture(event.pointerId)) viewport.releasePointerCapture(event.pointerId); } catch {}
+      const previous = drag;
       drag = null;
-      viewport.classList.remove('panning');
+      if (previous.nodeKey && previous.moved) { physics.simulation.release(previous.nodeKey); wakePhysics(); }
+      previous.element?.classList.remove('dragging');
+      try { if (viewport.hasPointerCapture(event.pointerId)) viewport.releasePointerCapture(event.pointerId); } catch {}
+      viewport.classList.remove('panning', 'dragging-node');
     }
+
+    function cancelDrag() { if (drag) pointerEnd({ pointerId: drag.pointerId }); }
 
     function guardDragClick(event) {
       if (performance.now() >= suppressClickUntil) return;
@@ -280,13 +374,13 @@
     }
 
     function keyDown(event) {
-      if (event.target.closest('.brain-project-menu')) return;
+      if (event.target.closest('.brain-project-menu, input, select, textarea, [contenteditable="true"]')) return;
       if (event.ctrlKey || event.metaKey || event.altKey) return;
       const directions = { ArrowLeft: [60, 0], ArrowRight: [-60, 0], ArrowUp: [0, 60], ArrowDown: [0, -60] };
-      if (event.key === '+' || event.key === '=') { event.preventDefault(); zoomBy(1.25); }
-      else if (event.key === '-' || event.key === '−') { event.preventDefault(); zoomBy(1 / 1.25); }
+      if (event.key === '+' || event.key === '=') { event.preventDefault(); zoomBy(ZOOM_STEP); }
+      else if (event.key === '-' || event.key === '−') { event.preventDefault(); zoomBy(1 / ZOOM_STEP); }
       else if (event.key === '0' || event.key === 'Home') { event.preventDefault(); fit(); }
-      else if (directions[event.key]) { event.preventDefault(); Object.assign(camera, panCamera(camera, ...directions[event.key]), { autoFit: false }); paint(); }
+      else if (directions[event.key]) { event.preventDefault(); stopCamera(); Object.assign(camera, panCamera(camera, ...directions[event.key]), { autoFit: false }); Object.assign(target, camera); paint(); }
     }
 
     function dispose() {
@@ -294,6 +388,9 @@
       disposed = true;
       projectMenu.dispose();
       cancelAnimationFrame(animationFrame);
+      cancelAnimationFrame(cameraFrame); cancelAnimationFrame(physicsFrame);
+      if (drag?.nodeKey && drag.moved) physics.simulation.release(drag.nodeKey);
+      drag?.element?.classList.remove('dragging'); physics.save();
       resizeObserver?.disconnect(); removalObserver?.disconnect();
       viewport.removeEventListener('wheel', wheel);
       viewport.removeEventListener('pointerdown', pointerDown);
@@ -302,8 +399,12 @@
       window.removeEventListener('pointermove', pointerMove);
       window.removeEventListener('pointerup', pointerEnd);
       window.removeEventListener('pointercancel', pointerEnd);
+      viewport.removeEventListener('lostpointercapture', pointerEnd);
+      window.removeEventListener('blur', cancelDrag);
+      document.removeEventListener('visibilitychange', visibilityChange);
+      motion.removeEventListener('change', motionChange);
       if (drag) { try { viewport.releasePointerCapture(drag.pointerId); } catch {} }
-      viewport.classList.remove('panning');
+      viewport.classList.remove('panning', 'dragging-node');
       if (graphController === controller) graphController = null;
     }
 
@@ -317,10 +418,15 @@
     window.addEventListener('pointermove', pointerMove, { passive: false });
     window.addEventListener('pointerup', pointerEnd);
     window.addEventListener('pointercancel', pointerEnd);
+    viewport.addEventListener('lostpointercapture', pointerEnd);
+    window.addEventListener('blur', cancelDrag);
+    document.addEventListener('visibilitychange', visibilityChange);
+    motion.addEventListener('change', motionChange);
     animationFrame = requestAnimationFrame(() => {
       if (disposed) return;
       resize();
       if (disposed) return;
+      wakePhysics();
       resizeObserver = new ResizeObserver(resize); resizeObserver.observe(viewport);
       const main = document.getElementById('main-content');
       if (main) { removalObserver = new MutationObserver(() => { if (!viewport.isConnected) dispose(); }); removalObserver.observe(main, { childList: true }); }
@@ -329,10 +435,12 @@
   }
 
   function renderGraph(files) {
+    const brainId = state.brainSpace?.activeId || 'personal';
     const data = graphData(files);
     const panel = el('section', { class: 'brain-graph-panel', 'aria-label': 'Kunnskapsgraf' });
     const cameraActions = { zoomBy: () => {}, fit: () => {} };
     const tools = renderGraphTools(data, cameraActions);
+    if (brainReadOnly()) for (const button of tools.querySelectorAll('.brain-toolbar-action')) button.disabled = true;
     panel.append(tools);
     const projectIds = state.projects.filter(project => (!ui.projectId || project.id === ui.projectId) &&
       ((!ui.brainQuery.trim() && ui.brainFilter === 'all') || data.nodes.some(node => node.projectId === project.id))).map(project => project.id);
@@ -340,7 +448,7 @@
       for (const button of tools.querySelectorAll('.brain-zoom-tools button')) button.disabled = true;
       tools.querySelector('.brain-zoom-level').textContent = '—';
       const viewport = el('div', { id: 'brain-graph-viewport', class: 'brain-graph-viewport brain-graph-empty-viewport', tabindex: 0, role: 'region', 'aria-label': 'Tom Brain-graf. Dobbeltklikk for å opprette et prosjekt.', 'aria-keyshortcuts': 'Shift+F10' }, renderEmpty());
-      const projectMenu = mountProjectMenu(viewport);
+      const projectMenu = mountProjectMenu(viewport, canCreateProjects);
       const controller = { dispose: () => { projectMenu.dispose(); if (graphController === controller) graphController = null; }, getState: () => null };
       graphController = controller;
       panel.append(viewport);
@@ -348,7 +456,15 @@
     }
     const layout = layoutClusters(data.nodes, projectIds);
     const { positions } = layout;
-    const viewport = el('div', { id: 'brain-graph-viewport', class: 'brain-graph-viewport', tabindex: 0, role: 'region', 'aria-label': 'Kunnskapsgraf. Dobbeltklikk på et tomt sted for nytt prosjekt. Zoom med pluss og minus, panorer med piltastene, og tilpass med 0.', 'aria-keyshortcuts': '+ - 0 ArrowLeft ArrowRight ArrowUp ArrowDown Shift+F10' });
+    const groupsByProject = new Map(layout.groups.map(group => [group.projectId, group]));
+    for (const node of data.nodes) {
+      const saved = nodeMemory.get(`${brainId}:${node.key}`), group = groupsByProject.get(node.projectId);
+      if (saved?.projectId === node.projectId && Number.isFinite(saved.x) && Number.isFinite(saved.y)) Object.assign(positions.get(node.key), { x: group.cx + clamp(saved.x, -group.width * .75, group.width * .75), y: group.cy + clamp(saved.y, -group.height * .75, group.height * .75) });
+    }
+    const simulation = window.SammenBrainPhysics.createSimulation({ ...data, groups: layout.groups, positions });
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) simulation.settle(160);
+    else for (let tick = 0; tick < 18; tick++) simulation.step();
+    const viewport = el('div', { id: 'brain-graph-viewport', class: 'brain-graph-viewport', tabindex: 0, role: 'region', 'aria-label': 'Kunnskapsgraf. Dra i en node for å flytte den, eller på et tomt sted for å panorere. Dobbeltklikk på et tomt sted for nytt prosjekt. Zoom med pluss og minus, og tilpass med 0.', 'aria-keyshortcuts': '+ - 0 ArrowLeft ArrowRight ArrowUp ArrowDown Shift+F10' });
     const svg = svgEl('svg', { class: 'brain-graph-svg', role: 'group', 'aria-label': 'Filer og flashcards, gruppert etter prosjekt' });
     const world = svgEl('g', { class: 'brain-graph-world' });
     const titleLayer = svgEl('g', { class: 'brain-graph-title-layer', 'aria-hidden': 'true' });
@@ -373,14 +489,16 @@
         world.append(addNote);
       }
     }
+    const edgeElements = [], nodeElements = [];
     for (const edge of data.edges) {
       const from = positions.get(edge.from), to = positions.get(edge.to);
       if (!from || !to) continue;
-      world.append(svgEl('path', { d: `M${from.x} ${from.y} Q${(from.x + to.x) / 2 + 16} ${(from.y + to.y) / 2 - 25} ${to.x} ${to.y}`, class: `brain-graph-edge ${edge.kind}` }));
+      const path = svgEl('path', { class: `brain-graph-edge ${edge.kind}` });
+      world.append(path); edgeElements.push({ edge, path });
     }
     for (const node of data.nodes) {
       const point = positions.get(node.key);
-      const group = svgEl('g', { class: `brain-graph-node ${node.kind}`, 'data-item-id': node.item?.id || '', tabindex: 0, role: 'button', 'aria-label': `Åpne ${node.kind === 'card' ? 'flashcard: ' : ''}${node.title}` });
+      const group = svgEl('g', { class: `brain-graph-node ${node.kind}`, 'data-node-key': node.key, 'data-item-id': node.item?.id || '', tabindex: 0, role: 'button', 'aria-label': `Åpne ${node.kind === 'card' ? 'flashcard: ' : ''}${node.title}` });
       const open = () => {
         if (node.item) showFile(node.item);
         else {
@@ -392,23 +510,40 @@
       group.addEventListener('click', event => { if (event.target.closest('.brain-node-shape, .brain-node-icon')) open(); });
       group.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); open(); } });
       group.append(svgEl('title', {}, node.title));
-      group.append(svgEl('circle', { cx: point.x, cy: point.y, r: node.kind === 'card' ? 19 : 23, class: 'brain-node-shape' }));
+      group.append(svgEl('circle', { cx: 0, cy: 0, r: node.kind === 'card' ? 19 : 23, class: 'brain-node-shape' }));
       const symbol = icon(node.kind === 'card' ? 'cards' : kindIcon(node.item), node.kind === 'card' ? 18 : 21);
-      symbol.setAttribute('x', point.x - (node.kind === 'card' ? 9 : 10.5));
-      symbol.setAttribute('y', point.y - (node.kind === 'card' ? 9 : 10.5));
+      symbol.setAttribute('x', -(node.kind === 'card' ? 9 : 10.5));
+      symbol.setAttribute('y', -(node.kind === 'card' ? 9 : 10.5));
       symbol.classList.add('brain-node-icon');
       group.append(symbol);
       const title = node.title.length > 21 ? `${node.title.slice(0, 20)}…` : node.title;
-      group.append(svgEl('text', { x: point.x, y: point.y + 44, 'text-anchor': 'middle', class: 'brain-node-title' }, title));
+      group.append(svgEl('text', { x: 0, y: 44, 'text-anchor': 'middle', class: 'brain-node-title' }, title));
       world.append(group);
+      nodeElements.push({ group, point });
     }
+    function paintPositions() {
+      for (const { group, point } of nodeElements) group.setAttribute('transform', `translate(${point.x.toFixed(3)} ${point.y.toFixed(3)})`);
+      for (const { edge, path } of edgeElements) {
+        const from = positions.get(edge.from), to = positions.get(edge.to);
+        path.setAttribute('d', `M${from.x} ${from.y} Q${(from.x + to.x) / 2 + 16} ${(from.y + to.y) / 2 - 25} ${to.x} ${to.y}`);
+      }
+    }
+    function savePositions() {
+      for (const node of data.nodes) {
+        const point = positions.get(node.key), group = groupsByProject.get(node.projectId);
+        nodeMemory.set(`${brainId}:${node.key}`, { projectId: node.projectId, x: point.x - group.cx, y: point.y - group.cy });
+      }
+      if (nodeMemory.size > 5000) for (const key of [...nodeMemory.keys()].slice(0, nodeMemory.size - 5000)) nodeMemory.delete(key);
+    }
+    paintPositions();
     viewport.append(svg);
     panel.append(viewport, el('div', { class: 'brain-graph-legend' }, el('span', {}, el('i', { class: 'brain-legend-line' }), 'Kildehenvisning'), el('span', {}, el('i', { class: 'brain-legend-line card' }), 'Flashcard-kilde'), data.edges.length ? null : el('span', { class: 'brain-graph-no-links' }, 'Ingen lagrede koblinger ennå')));
-    mountCamera(viewport, svg, world, titles, layout, cameraActions, tools.querySelector('.brain-zoom-level'));
+    mountCamera(viewport, svg, world, titles, layout, cameraActions, tools.querySelector('.brain-zoom-level'), { simulation, paint: paintPositions, save: savePositions });
     return panel;
   }
 
   function renderEmpty() {
+    if (brainReadOnly()) return el('div', { class: 'brain-empty' }, el('span', { class: 'brain-empty-doodle' }, icon('globe', 45)), el('h3', {}, 'Felles for alle i Sammen'), el('p', {}, 'Koble til den offentlige Brainen for å åpne felles prosjekter.'), el('button', { type: 'button', class: 'button brain-create-button', onclick: () => window.SammenBrainSpaces?.openConnect?.() }, icon('link', 16), 'Koble til Offentlig Brain'));
     return el('div', { class: 'brain-empty' }, el('span', { class: 'brain-empty-doodle' }, icon('brain', 45)), el('h3', {}, 'En ny tanke?'), el('button', { type: 'button', class: 'button brain-create-button', onclick: () => newItem('note') }, icon('add', 16), 'Nytt notat'));
   }
 
@@ -443,6 +578,7 @@
     if (!documentMode && !editor?.dirty) editor = null;
     const page = el('div', { class: `brain-workspace ${documentMode ? 'brain-mode-document' : 'brain-mode-graf'}` });
     page.append(el('h1', { class: 'visually-hidden' }, 'Brain'));
+    if (window.SammenBrainSpaces) page.append(window.SammenBrainSpaces.render());
     const stage = el('section', { class: 'brain-stage', 'aria-label': documentMode ? selected.title || 'Dokument' : 'Brain-graf' });
     if (documentMode) stage.append(el('div', { class: 'brain-document-head' }, el('button', { type: 'button', id: 'brain-back-to-graph', class: 'brain-back-button', 'aria-label': 'Tilbake til Brain-grafen', onclick: () => go('brain', ui.projectId, null) }, icon('chevron', 14), 'Brain')));
     stage.append(el('div', { id: 'brain-document-area', class: 'brain-document-area' }, documentMode ? renderDocument(selected) : renderGraph(files)));

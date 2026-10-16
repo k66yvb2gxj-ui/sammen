@@ -1,0 +1,49 @@
+.brain-spaces {
+  flex-shrink: 0;
+  padding: 15px 29px 0;
+  color: #927ca3;
+  background: #fcfaff;
+}
+.brain-spaces-top { display: flex; align-items: center; gap: 10px; min-width: 0; flex-wrap: wrap; }
+.brain-spaces-segments { display: inline-flex; padding: 4px; gap: 3px; border: 1px solid #e9deef; border-radius: 14px; background: #f4edf9; }
+.brain-spaces-segment { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 34px; padding: 8px 13px; border-radius: 10px; background: transparent; color: #a18aaf; font-size: 11px; white-space: nowrap; }
+.brain-spaces-segment:hover { background: #ede1f5; color: #86659d; }
+.brain-spaces-segment.selected { background: #fffaff; color: #795a93; box-shadow: 0 2px 0 #ded0e8, 0 1px 5px #6b478912; }
+.brain-spaces-select-wrap { position: relative; display: inline-flex; align-items: center; min-width: 0; max-width: 250px; color: #a18aaf; }
+.brain-spaces-select-wrap > .icon { pointer-events: none; position: absolute; left: 11px; }
+.brain-spaces-select { width: 100%; min-width: 125px; max-width: 250px; min-height: 38px; padding: 8px 26px 8px 33px; border: 1px solid #ece2f2; border-radius: 11px; background: #fbf7fd; color: #927ba4; font-size: 11px; cursor: pointer; text-overflow: ellipsis; }
+.brain-spaces-select.selected { border-color: #d3bfdf; background: #eee1f6; color: #7e5c95; box-shadow: 0 2px 0 #e4d4ed; }
+.brain-spaces .brain-spaces-add { display: grid; place-items: center; width: 35px; min-width: 35px; height: 35px; padding: 0; border: 1px dashed #d6c5e1; border-radius: 11px; background: transparent; color: #a18ab2; box-shadow: none; }
+.brain-spaces .brain-spaces-add:hover { background: #eee2f6; border-color: #bda2ce; color: #84619c; }
+.brain-spaces-status-line { display: flex; align-items: center; gap: 12px; min-height: 29px; padding: 5px 5px 0; }
+.brain-spaces-status { display: inline-flex; align-items: center; gap: 6px; min-width: 0; color: #b1a2bc; font-size: 10px; }
+.brain-spaces-status.connected { color: #8a9b8b; }
+.brain-spaces .brain-spaces-action { min-height: 25px; padding: 4px 7px; gap: 5px; border: 0; border-radius: 7px; background: transparent; color: #9579a9; box-shadow: none; font-size: 10px; font-weight: 500; }
+.brain-spaces .brain-spaces-action:hover { background: #f0e6f7; color: #7f5d95; }
+.brain-spaces button:focus-visible,
+.brain-spaces select:focus-visible { outline: 2px solid #9878b1; outline-offset: 3px; }
+.brain-spaces-modal { max-width: 470px; border: 1px solid #e6dbee; border-radius: 21px; background: #fffbff; color: #6f5d7e; box-shadow: 0 8px 0 #5b3b6e12, 0 24px 70px #39234126; }
+.brain-spaces-modal .modal-head h2 { color: #775d89; font-size: 23px; font-weight: 550; letter-spacing: -.5px; }
+.brain-spaces-modal .modal-description { color: #a08bae; font-size: 12px; line-height: 1.6; }
+.brain-spaces-modal .field label { color: #8a729b; font-size: 11px; }
+.brain-spaces-modal .field input { border-color: #e6d9ee; border-radius: 11px; background: #fcf8ff; color: #765c88; }
+.brain-spaces-modal .field input::placeholder { color: #b9a8c5; }
+.brain-spaces-modal .field input:focus-visible { outline-color: #ae8dc6; }
+.brain-spaces-modal .button { border: 1px solid #d6c1e6; border-radius: 10px; background: #e8d9f3; color: #79548f; box-shadow: 0 2px 0 #d9c5e6; }
+.brain-spaces-modal .button:hover { background: #dfc9ee; }
+.brain-spaces-modal .button-secondary { background: #fcf8ff; border-color: #e9dfef; color: #9b83ad; box-shadow: none; }
+.brain-spaces-modal .button-secondary:hover { background: #f1e7f8; }
+.brain-spaces-modal .modal-actions { justify-content: space-between; gap: 12px; }
+.brain-spaces-note { color: #a28bae; font-size: 11px; line-height: 1.6; }
+.brain-spaces-error { margin: 0 0 15px; color: #a35f70; font-size: 12px; line-height: 1.6; }
+.brain-spaces-working { margin: 0 0 15px; color: #9775aa; font-size: 12px; }
+.brain-spaces-transition-status { position: fixed; right: 25px; bottom: 23px; z-index: 50; padding: 10px 15px; border: 1px solid #e2d3ec; border-radius: 12px; background: #fffaff; color: #9373a7; box-shadow: 0 3px 0 #e8dcf0; font-size: 11px; pointer-events: none; }
+@media (max-width: 700px) {
+  .brain-spaces { padding: 12px 17px 0; }
+  .brain-spaces-top { gap: 8px; }
+  .brain-spaces-segment { padding: 8px 10px; font-size: 10px; gap: 6px; }
+  .brain-spaces-select-wrap, .brain-spaces-select { max-width: 210px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .brain-spaces button, .brain-spaces select { transition: none; }
+}
