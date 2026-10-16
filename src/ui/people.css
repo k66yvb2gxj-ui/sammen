@@ -1,0 +1,42 @@
+.people-avatar { display: inline-block; vertical-align: middle; flex-shrink: 0; overflow: visible; }
+.people-stack { display: inline-flex; align-items: center; padding-left: 0; vertical-align: middle; }
+.people-stack > .people-avatar + .people-avatar,
+.people-stack > .people-stack-more { margin-left: -7px; }
+.people-stack-more { display: inline-grid; place-items: center; min-width: 25px; height: 25px; padding: 0 4px; border: 2px solid #fffaff; border-radius: 50%; background: #eaddf3; color: #9374a7; font-size: 9px; font-weight: 600; }
+.people-contributors { display: inline-flex; align-items: center; gap: 5px; padding: 3px 5px; border: 0; border-radius: 9px; background: transparent; color: #9b83ab; font-size: 10px; }
+.people-contributors:hover { background: #f0e5f7; }
+.people-contributor-count { min-width: 10px; font-variant-numeric: tabular-nums; }
+.people-contributors:focus-visible,
+.people-picker button:focus-visible { outline: 2px solid #9f7db7; outline-offset: 3px; }
+.people-modal { max-width: 470px; border: 1px solid #e6daee; border-radius: 21px; background: #fffaff; color: #796187; }
+.people-modal .modal-head h2 { color: #795c8f; font-size: 23px; }
+.people-modal .modal-description { margin-bottom: 20px; color: #aa95b7; font-size: 12px; }
+.people-list { display: flex; flex-direction: column; gap: 4px; list-style: none; margin: 0; padding: 0; }
+.people-list-row { display: flex; align-items: center; gap: 11px; min-width: 0; padding: 10px 7px; border-radius: 12px; }
+.people-list-row + .people-list-row { border-top: 1px solid #f0e8f6; }
+.people-list-person { display: flex; flex: 1; flex-direction: column; gap: 5px; min-width: 0; }
+.people-list-person strong { color: #846b94; font-size: 12px; font-weight: 550; overflow: hidden; text-overflow: ellipsis; }
+.people-list-person small { color: #b09bbe; font-size: 10px; line-height: 1.4; }
+.people-you { flex-shrink: 0; border-radius: 6px; padding: 3px 6px; background: #eee4f6; color: #a086b1; font-size: 9px; }
+.people-presence { display: inline-flex; align-items: center; gap: 5px; }
+.people-presence i { width: 5px; height: 5px; flex-shrink: 0; border-radius: 50%; background: #c7b8d0; }
+.people-presence.online i { background: #9ab39a; }
+.people-presence.online { color: #8da18e; }
+.people-editing { margin-left: 2px; color: #a88cb9; }
+.people-empty { padding: 16px 5px; color: #b09cbd; font-size: 12px; }
+.people-members-summary { display: flex; align-items: center; gap: 12px; padding: 0 5px 17px; color: #ac96bb; font-size: 11px; }
+.people-modal .modal-actions .button { border-color: #e4d7ec; background: #f4ebfa; color: #9574a9; border-radius: 10px; }
+.people-picker { padding: 13px 0 6px; }
+.people-picker-preview { display: flex; align-items: center; gap: 14px; margin-bottom: 18px; color: #a28aac; font-size: 12px; }
+.people-picker-label { display: block; margin: 14px 0 8px; color: #a08aaf; font-size: 10px; }
+.people-picker-style,
+.people-picker-color { display: flex; align-items: center; flex-wrap: wrap; gap: 5px; }
+.people-picker-choice { display: grid; place-items: center; padding: 4px; border: 1px solid transparent; border-radius: 12px; background: transparent; }
+.people-picker-choice:hover { background: #f2e9f9; }
+.people-picker-choice.selected { background: #eee1f7; border-color: #d7bfeb; box-shadow: 0 2px 0 #e2d0ee; }
+.people-picker-color .people-picker-choice { padding: 2px; border-radius: 50%; }
+.people-picker-color .people-picker-choice.selected { box-shadow: none; }
+.sharing-members .people-list { margin: 8px 0 0; }
+.sharing-members .people-list-row { padding: 8px 3px; }
+.sharing-members .people-list-person { display: flex; }
+.sharing-members .people-list-person strong { font-size: 11px; }

@@ -4,7 +4,7 @@
   let binding = null, generation = 0, initialized = false;
   const shared = draft => {
     const sync = ui.sync || state.sync;
-    return Boolean(draft && ['host', 'client'].includes(sync.mode) && sync.projectId === draft.projectId);
+    return Boolean(draft && ['host', 'client'].includes(sync.mode) && (sync.scope === 'brain' || sync.projectId === draft.projectId));
   };
   const busyMap = draft => draft?.type === 'mindmap' && Boolean(document.querySelector('.topic-map-inline-input, .topic-map-relation-input, .topic-map-svg.dragging'));
   const canonical = value => Array.isArray(value) ? value.map(canonical) : value && typeof value === 'object' ? Object.fromEntries(Object.keys(value).sort().map(key => [key, canonical(value[key])])) : value;
@@ -86,7 +86,8 @@
     const beforeMap = JSON.stringify(draft.mindmap);
     const merged = current.model.read({ ...draft, ...(payload.item || {}) });
     if (payload.item) state.items = state.items.map(item => item.id === payload.item.id ? payload.item : item);
-    for (const field of ['title', 'content', 'status', 'citations', 'mindmap', 'revision', 'updatedAt', 'author']) if (merged[field] !== undefined) draft[field] = merged[field];
+    for (const field of ['title', 'content', 'status', 'citations', 'mindmap', 'revision', 'updatedAt', 'author', 'contributors', 'legacyAuthor']) if (merged[field] !== undefined) draft[field] = merged[field];
+    refreshEditorContributors(draft);
     current.draft = draft;
     if (draft.type === 'mindmap') {
       if (beforeMap !== JSON.stringify(draft.mindmap) && !busyMap(draft)) renderMain();

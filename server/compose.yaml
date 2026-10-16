@@ -6,6 +6,8 @@ services:
     environment:
       SAMMEN_PUBLIC_ORIGIN: https://${SAMMEN_DOMAIN}
       SAMMEN_CREATE_KEY: ${SAMMEN_CREATE_KEY}
+      SAMMEN_PUBLIC_BRAIN: ${SAMMEN_PUBLIC_BRAIN:-0}
+      SAMMEN_ADMIN_KEY: ${SAMMEN_ADMIN_KEY:-}
     volumes:
       - sammen-data:/data
     restart: unless-stopped

@@ -94,10 +94,11 @@
     if (!draft?.mindmap?.nodes?.length) return el('div');
     const map = () => draft.mindmap;
     const nodes = () => map().nodes;
-    let session = sessions.get(draft.id);
+    const cacheKey = JSON.stringify([state.brainSpace?.activeId || 'personal', draft.id]);
+    let session = sessions.get(cacheKey);
     if (!session) {
       session = { selected: nodes()[0].id, past: [], future: [], view: null, relationFrom: null, draftReference: draft };
-      sessions.set(draft.id, session);
+      sessions.set(cacheKey, session);
       if (sessions.size > 30) sessions.delete(sessions.keys().next().value);
     }
     if (session.draftReference !== draft && !draft.dirty) {

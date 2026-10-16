@@ -10,13 +10,27 @@ Bruk en server eller containerplattform med varig disk. Domenet må peke til ser
 2. Sett `SAMMEN_DOMAIN` til domenet ditt og `SAMMEN_CREATE_KEY` til en privat tilfeldig nøkkel på minst 24 tegn. Nøkkelen brukes bare av den som oppretter fellesrom; elevene trenger invitasjonen.
 3. Kjør `docker compose --env-file .env up -d --build` i denne mappen.
 4. Kontroller `https://ditt-domene/health`.
-5. I Sammen: **Samarbeid → Internett**, velg prosjekt, skriv serveradressen og opprettelsesnøkkelen, og opprett fellesrom. Del adressen og invitasjonskoden med klassen. Medelever velger **Bli med**.
+5. I Sammen: opprett en egen Brain med **+** over grafen. Velg **Inviter → Internett**, skriv serveradressen og opprettelsesnøkkelen, og opprett fellesrom. Alle prosjektene i denne Brainen deles. Del adressen og invitasjonskoden med ønskede deltakere. Medelever velger **+ → Bli med**.
 
-Elevenes apper bruker vanlig sertifikatvalidering for internettserveren. Det trengs ingen portåpning eller fjernstyring på elev-PC-ene. Vertens opprinnelige lokale prosjekt beholdes; fellesrommet er en egen kopi. Rommet fortsetter å fungere når den som opprettet det lukker appen.
+Elevenes apper bruker vanlig sertifikatvalidering for internettserveren. Det trengs ingen portåpning eller fjernstyring på elev-PC-ene. Min Brain holdes adskilt; bare innhold i den valgte inviterte Brainen sendes. Rommet fortsetter å fungere når den som opprettet det lukker appen. Eldre klienters deling av ett prosjekt støttes fortsatt.
+
+## Offentlig Brain
+
+Sett `SAMMEN_PUBLIC_BRAIN=1` i `.env` for å aktivere én separat offentlig Brain på serveren. Standard er av. Klientene velger **Offentlig Brain → Koble til** og bruker samme HTTPS-serveradresse. `SAMMEN_PUBLIC_BRAIN_URL` kan også angi adressen ved oppstart av desktop-klienten. Min Brain og inviterte rom kopieres aldri automatisk hit.
+
+`POST /api/public-brain/join` gir en midlertidig klientøkt uten invitasjonskode eller opprettelsesnøkkel. Alle som når denne serveren, kan lese og redigere den offentlige Brainen. Det er ingen kontoidentitet eller moderering ennå; serveroperatøren må velge om dette skal aktiveres. Data lagres separat i `public-brain.sqlite`. Ingen offentlig server er satt opp av kodeendringen.
+
+## Adminoversikt
+
+Sett den valgfrie `SAMMEN_ADMIN_KEY` til en egen tilfeldig nøkkel på minst 24 tegn for å aktivere en lesbar oversikt over serverens delte Brains, registrerte deltakere og aktivitet. Bruk en annen nøkkel enn `SAMMEN_CREATE_KEY`. Tom verdi slår admin-API-et helt av. Nøkkelen brukes som `Authorization: Bearer …` til `GET /api/admin/overview` og `GET /api/admin/activity?limit=50` (maks 200 hendelser). Den skal aldri legges i nettadressen, offentlige klientinnstillinger, invitasjoner eller GitHub.
+
+Oversikten viser bare data på denne fellesromserveren: Brain-ID og navn, prosjekt- og filantall, deltakernes oppgitte profiler og siste aktivitet. Den henter ingen private Brains eller filer fra elev-PC-er. Deltakere er profiler som har blitt med via invitasjon eller offentlig tilkobling; dette verifiserer ingen skolekonto.
+
+Når admin er aktivert, beholdes de siste 5 000 aktivitetene i `admin-activity.sqlite`: innmelding, utmelding, profilendring, oppretting/endring/sletting av filer, prosjektendringer og nye rom. Loggen inneholder deltaker-ID, navn og profilikon samt rom-ID og eventuell fil-/prosjekt-ID og tittel. Filinnhold, invitasjonskoder og økttoken logges ikke. Å åpne filer eller hente status lager ingen aktivitet. Oversikten kan ikke slette, sperre eller fjernstyre noe. Historikk fra før aktivering finnes ikke.
 
 ## Drift og begrensninger
 
-Ta sikkerhetskopi av `sammen-data`-volumet. Serveren krever varig disk og én skriveprosess per datamappe; dette oppsettet skal ikke skaleres til flere parallelle containere som skriver de samme SQLite-filene. Nedlastet hovedprosjekt bevares ikke automatisk som en komplett lokal offlinekopi hos hver elev, men uavleverte redigeringsoppdateringer lagres lokalt og forsøkes sendt igjen når forbindelsen er tilbake.
+Ta sikkerhetskopi av `sammen-data`-volumet. Serveren krever varig disk og én skriveprosess per datamappe; dette oppsettet skal ikke skaleres til flere parallelle containere som skriver de samme SQLite-filene. Siste mottatte arbeidsrom og uavleverte redigeringsoppdateringer lagres lokalt og forsøkes synkronisert igjen når forbindelsen er tilbake. En klientøkt varer opptil åtte timer; utløpt økt krever ny tilkobling. Lokale kopier slettes ikke ved vanlig avslutning.
 
 Opprettelsesnøkkelen hindrer at hvem som helst fyller serveren med nye rom. Standardgrensen er 100 rom og 12 nye rom per time per direkte klientadresse. Invitasjonen gir redigeringstilgang: del den bare med ønskede deltakere. Skolekontoer, invitasjonsrotasjon, administrasjon av rom og brukerstyrt sletting er videre arbeid. Ingen ekstern server eller kostnad er opprettet automatisk av denne pakken.
 

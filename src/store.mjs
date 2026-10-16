@@ -1,8 +1,16 @@
 import { DatabaseSync } from 'node:sqlite';
 import { randomUUID } from 'node:crypto';
+import { normalizePerson, normalizeAvatar, validateContributors, recordContribution, contributionTime } from './people.mjs';
 
 const kinds = ['project', 'item', 'card', 'chat'];
 const timestamp = () => new Date().toISOString();
+const canonical = value => Array.isArray(value) ? value.map(canonical) : value && typeof value === 'object' ? Object.fromEntries(Object.keys(value).sort().filter(key => value[key] !== undefined).map(key => [key, canonical(value[key])])) : value;
+const itemContent = item => canonical({
+  type: item.type || 'note', title: item.title, content: item.content || '', origin: item.origin || 'human',
+  status: item.status || 'draft', sourceUrl: item.sourceUrl || '', sourceName: item.sourceName || '',
+  citations: (item.citations || []).map(citation => ({ id: citation.id, sourceId: citation.sourceId || '', title: citation.title || 'Kilde', url: citation.url || '', excerpt: citation.excerpt || '' })),
+  ...(item.type === 'mindmap' ? { mindmap: { ...item.mindmap, relations: item.mindmap?.relations || [] } } : {})
+});
 const text = (value, limit, name, required = false) => {
   if (typeof value !== 'string' || value.length > limit || (required && !value.trim())) throw new Error(`Ugyldig ${name}.`);
   return value;
@@ -21,11 +29,11 @@ const citations = value => {
 };
 
 export class Store {
-  constructor(filename = ':memory:') {
+  constructor(filename = ':memory:', { seedDefaultProject = true } = {}) {
     this.db = new DatabaseSync(filename);
     this.db.exec('PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; CREATE TABLE IF NOT EXISTS records(kind TEXT NOT NULL, id TEXT PRIMARY KEY, data TEXT NOT NULL); CREATE TABLE IF NOT EXISTS metadata(key TEXT PRIMARY KEY, data TEXT NOT NULL);');
-    if (!this.getMeta('user')) this.setMeta('user', { id: randomUUID(), name: 'Meg' });
-    if (!this.list('project').length) this.saveProject({ title: 'Mitt første prosjekt', description: 'Et sted for notater, kilder og spørsmål.', color: '#647a64' });
+    this.setMeta('user', normalizePerson(this.getMeta('user') || { id: randomUUID(), name: 'Meg' }));
+    if (seedDefaultProject && !this.list('project').length) this.saveProject({ title: 'Mitt første prosjekt', description: 'Et sted for notater, kilder og spørsmål.', color: '#647a64' });
   }
   close() { this.db.close(); }
   getMeta(key) { const r = this.db.prepare('SELECT data FROM metadata WHERE key=?').get(key); return r ? JSON.parse(r.data) : null; }
@@ -37,13 +45,19 @@ export class Store {
   snapshot(projectId) {
     return { version: 1, user: this.getMeta('user'), projects: this.list('project').filter(p => !projectId || p.id === projectId), items: this.list('item').filter(i => !projectId || i.projectId === projectId), flashcards: this.list('card').filter(i => !projectId || i.projectId === projectId), chats: this.list('chat').filter(i => !projectId || i.projectId === projectId) };
   }
-  saveProfile(input) { this.setMeta('user', { ...this.getMeta('user'), name: text(input.name, 80, 'navn', true).trim() }); }
+  saveProfile(input) {
+    if (!input || typeof input !== 'object') throw new Error('Ugyldig brukerprofil.');
+    const previous = normalizePerson(this.getMeta('user'));
+    const name = input.name === undefined ? previous.name : text(input.name, 80, 'navn', true).trim();
+    const avatar = input.avatar === undefined ? previous.avatar : normalizeAvatar(input.avatar, previous.id);
+    this.setMeta('user', { id: previous.id, name, avatar });
+  }
   saveProject(input) {
     const old = input.id ? this.project(input.id) : null;
     const p = { id: old?.id || randomUUID(), title: text(input.title, 120, 'prosjekttittel', true).trim(), description: text(input.description || '', 2000, 'prosjektbeskrivelse'), color: /^#[a-f0-9]{6}$/i.test(input.color || '') ? input.color : old?.color || '#647a64', createdAt: old?.createdAt || timestamp(), updatedAt: timestamp() };
     return this.put('project', p);
   }
-  saveItem(input, author = this.getMeta('user').name) {
+  saveItem(input, author = this.getMeta('user'), actor) {
     this.project(input.projectId);
     const old = input.id ? this.get('item', id(input.id)) : null;
     if (input.id && !old) throw new Error('Notatet finnes ikke lenger.');
@@ -95,7 +109,16 @@ export class Store {
         });
       }
     }
-    const item = { id: old?.id || randomUUID(), projectId: input.projectId, type, title: text(input.title, 200, 'notattittel', true).trim(), content: text(input.content || '', 250000, 'notattekst'), origin, status: input.status === 'reviewed' ? 'reviewed' : 'draft', author: text(author, 80, 'forfatter', true), sourceUrl: safeUrl(input.sourceUrl || old?.sourceUrl), sourceName: text(input.sourceName || old?.sourceName || '', 500, 'kildenavn'), citations: citations(input.citations || old?.citations), mindmap, createdAt: old?.createdAt || timestamp(), updatedAt: timestamp(), revision: (old?.revision || 0) + 1 };
+    const person = actor !== undefined ? normalizePerson(actor) : author && typeof author === 'object' ? normalizePerson(author) : null;
+    const authorName = person?.name || text(author, 80, 'forfatter', true).trim();
+    const at = timestamp();
+    const item = { id: old?.id || randomUUID(), projectId: input.projectId, type, title: text(input.title, 200, 'notattittel', true).trim(), content: text(input.content || '', 250000, 'notattekst'), origin, status: input.status === 'reviewed' ? 'reviewed' : 'draft', author: authorName, sourceUrl: safeUrl(input.sourceUrl || old?.sourceUrl), sourceName: text(input.sourceName || old?.sourceName || '', 500, 'kildenavn'), citations: citations(input.citations || old?.citations), ...(mindmap ? { mindmap } : {}), createdAt: old?.createdAt || at, updatedAt: at, revision: (old?.revision || 0) + 1 };
+    if (old && JSON.stringify(itemContent(old)) === JSON.stringify(itemContent(item))) return old;
+    const generated = !old && (origin === 'ai' || type === 'ai');
+    item.author = generated ? 'KI' : authorName;
+    item.contributors = generated ? [] : person ? recordContribution(old?.contributors, person, at) : validateContributors(old?.contributors);
+    const legacyAuthor = old?.legacyAuthor || (person && old && !old.contributors?.length && old.author && old.author.trim().toUpperCase() !== 'KI' ? old.author : '');
+    if (legacyAuthor) item.legacyAuthor = text(legacyAuthor, 80, 'eldre forfatternavn', true).trim();
     return this.put('item', item);
   }
   deleteItem({ id: key, revision }) {
@@ -148,7 +171,16 @@ export class Store {
       const p = this.saveProject({ ...data.project, id: undefined, title: `${data.project.title} (importert)`.slice(0, 120) });
       const mapping = new Map();
       for (const item of data.items) {
-        const saved = this.saveItem({ ...item, id: undefined, projectId: p.id, revision: undefined });
+        const history = validateContributors(item.contributors);
+        const author = item.author === undefined ? (item.origin === 'ai' || item.type === 'ai' ? 'KI' : 'Ukjent forfatter') : text(item.author, 80, 'forfatter', true).trim();
+        const saved = this.saveItem({ ...item, id: undefined, projectId: p.id, revision: undefined }, author);
+        saved.author = author;
+        saved.contributors = history;
+        if (item.legacyAuthor !== undefined) saved.legacyAuthor = text(item.legacyAuthor, 80, 'eldre forfatternavn', true).trim();
+        if (item.createdAt !== undefined) saved.createdAt = contributionTime(item.createdAt);
+        if (item.updatedAt !== undefined) saved.updatedAt = contributionTime(item.updatedAt);
+        if (saved.updatedAt < saved.createdAt) throw new Error('Ugyldig dato i prosjektfilen.');
+        this.put('item', saved);
         mapping.set(item.id, saved.id);
       }
       for (const item of this.snapshot(p.id).items) {
@@ -166,7 +198,7 @@ export class Store {
 }
 
 export const supportedOperations = ['saveProject', 'saveItem', 'deleteItem', 'saveCard', 'createChat', 'appendMessage'];
-export function mutateStore(store, operation, input, { projectId, author } = {}) {
+export function mutateStore(store, operation, input, { projectId, author, actor } = {}) {
   if (!supportedOperations.includes(operation)) throw new Error('Operasjonen støttes ikke.');
   if (projectId) {
     let target = input.projectId;
@@ -176,7 +208,7 @@ export function mutateStore(store, operation, input, { projectId, author } = {})
     if (operation === 'appendMessage') target = store.get('chat', input.chatId)?.projectId;
     if (target !== projectId) throw new Error('Du har bare tilgang til det delte prosjektet.');
   }
-  if (operation === 'saveItem') return store.saveItem(input, author);
-  if (operation === 'appendMessage') return store.appendMessage({ ...input, message: { ...input.message, author } });
+  if (operation === 'saveItem') return store.saveItem(input, author, actor);
+  if (operation === 'appendMessage') return store.appendMessage({ ...input, message: { ...input.message, author: actor ? normalizePerson(actor).name : author && typeof author === 'object' ? normalizePerson(author).name : author } });
   return store[operation](input);
 }
