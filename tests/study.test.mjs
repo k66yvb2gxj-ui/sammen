@@ -117,3 +117,74 @@ test('written mistakes remain in the retry queue until recalled correctly', () =
   advanceLearn(learn, true);
   assert.deepEqual(plain(learn.mastered), [cards[0].id]);
 });
+
+// ───── NFKC / sammensatt–dekomponert Unicode ─────
+
+test('NFKC-compatible characters match across composed and decomposed forms in written answers', () => {
+  // Å (U+00C5) vs A + ring (U+0041 U+030A) — normaliseres identisk
+  assert.equal(normalizeAnswer('blåbær'), normalizeAnswer('bla\u030A\u0062\u00E6\u0072'));
+  assert.equal(normalizeAnswer('Brød'), normalizeAnswer('\u0042\u0072\u00F8\u0064'));
+  // Full-width bokstaver normaliseres til smale (NFKC)
+  assert.equal(normalizeAnswer('\uFF2D\uFF45\uFF52'), 'mer');
+  // isCorrect skal matche uavhengig av Unicode-form
+  const q = { type: 'written', answer: 'Å være eller ikke være', response: 'A\u030A \u0076\u00E6\u0072\u0065 \u0065\u006C\u006C\u0065\u0072 \u0069\u006B\u006B\u0065 \u0076\u00E6\u0072\u0065' };
+  assert.equal(isCorrect(q), true);
+  // Motsatt retning: dekomponert fasit, sammensatt svar
+  const q2 = { type: 'written', answer: 'A\u030A \u0076\u00E6\u0072\u0065', response: 'Å være' };
+  assert.equal(isCorrect(q2), true);
+});
+
+test('multiple choice deduplicates alternatives after Unicode normalization', () => {
+  // Kort med komponert og dekomponert Å i svar — like etter NFKC, telles som duplikater
+  const unicodeCards = [
+    { id: 'a', question: 'Hovedstaden i Norge?', answer: 'Oslo' },
+    { id: 'b', question: 'Hvor ligger Slottet?', answer: '\u004F\u0073\u006C\u006F' },          // O-s-l-o (ASCII — identisk med Oslo etter NFKC)
+    { id: 'c', question: 'Hva er Norges lengste elv?', answer: 'Glomma' },
+    { id: 'd', question: 'Norges nest største by?', answer: 'Bergen' },
+  ];
+  // a og b har samme normaliserte svar ('oslo')
+  assert.equal(normalizeAnswer(unicodeCards[0].answer), 'oslo');
+  assert.equal(normalizeAnswer(unicodeCards[1].answer), 'oslo');
+  // Flervalg for kort 'a' skal ha 3 alternativer (Oslo, Glomma, Bergen) — ikke 4 (b er duplikat)
+  const q = questionFor(unicodeCards[0], unicodeCards, 'choice', false, () => .3);
+  assert.equal(q.type, 'choice');
+  const options = plain(q.options);
+  assert.equal(options.length, 3);
+  // Ingen duplikater etter normalisering
+  assert.equal(new Set(options.map(normalizeAnswer)).size, options.length);
+});
+
+test('reversed cards with identical normalized questions only allow written, and questionFor falls back to written for choice/truefalse', () => {
+  // To kort med spørsmål som bare skiller seg i Unicode-form (sammensatt vs dekomponert Å)
+  const reverseCards = [
+    { id: 'r1', question: 'Hva er fotosyntese?', answer: 'Planter lager sukker med lys.' },
+    { id: 'r2', question: 'Hva er fotosyntese?', answer: 'Klorofyll fanger sollys.' },
+    { id: 'r3', question: 'Hv\uFF41 er fotosyntese?', answer: 'CO₂ + H₂O → sukker + O₂' },
+  ];
+  // r1 og r3 har identisk normalisert spørsmål ('hva er fotosyntese?') — full-width a → ASCII a
+  assert.equal(normalizeAnswer(reverseCards[0].question), normalizeAnswer(reverseCards[2].question));
+  // r2 har ordrett samme spørsmål som r1 — like i plain og normalisert form
+  assert.equal(normalizeAnswer(reverseCards[1].question), normalizeAnswer(reverseCards[2].question));
+
+  // availableTypes i reversert modus: svar-siden er promptene (originale spørsmål)
+  // r1.question og r3.question er like → bare 2 unike normaliserte svar → kun 'written'
+  const types = availableTypes(reverseCards, true);
+  assert.deepEqual(plain(types), ['written'], 'bare written når spørsmålene er like etter normalisering');
+
+  // questionFor for r1 i reversert choice: ingen distraktorer → fallback til written
+  const qChoice = questionFor(reverseCards[0], reverseCards, 'choice', true, () => .5);
+  assert.equal(qChoice.type, 'written', 'choice skal falle tilbake til written');
+  assert.equal(qChoice.prompt, reverseCards[0].answer);
+  assert.equal(qChoice.answer, reverseCards[0].question);
+
+  // questionFor for r1 i reversert truefalse: ingen distraktorer → fallback til written
+  const qTF = questionFor(reverseCards[0], reverseCards, 'truefalse', true, () => .5);
+  assert.equal(qTF.type, 'written', 'truefalse skal falle tilbake til written');
+
+  // buildQuestions skal respektere dette — kun written-spørsmål genereres
+  const questions = buildQuestions(reverseCards, { count: 3, types: ['choice', 'truefalse', 'written'], reverse: true }, () => .2);
+  assert.equal(questions.length, 3);
+  for (const q of questions) {
+    assert.equal(q.type, 'written');
+  }
+});
