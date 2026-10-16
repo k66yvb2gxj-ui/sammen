@@ -121,9 +121,8 @@ test('written mistakes remain in the retry queue until recalled correctly', () =
 // ───── NFKC / sammensatt–dekomponert Unicode ─────
 
 test('NFKC-compatible characters match across composed and decomposed forms in written answers', () => {
-  // Å (U+00C5) vs A + ring (U+0041 U+030A) — normaliseres identisk
+  // Å (U+00C5) vs A + combining ring (U+0041 U+030A) — like etter NFKC
   assert.equal(normalizeAnswer('blåbær'), normalizeAnswer('bla\u030A\u0062\u00E6\u0072'));
-  assert.equal(normalizeAnswer('Brød'), normalizeAnswer('\u0042\u0072\u00F8\u0064'));
   // Full-width bokstaver normaliseres til smale (NFKC)
   assert.equal(normalizeAnswer('\uFF2D\uFF45\uFF52'), 'mer');
   // isCorrect skal matche uavhengig av Unicode-form
@@ -135,39 +134,40 @@ test('NFKC-compatible characters match across composed and decomposed forms in w
 });
 
 test('multiple choice deduplicates alternatives after Unicode normalization', () => {
-  // Kort med komponert og dekomponert Å i svar — like etter NFKC, telles som duplikater
+  // Verdiene skiller seg i rå Unicode men er identiske etter NFKC-normalisering
   const unicodeCards = [
-    { id: 'a', question: 'Hovedstaden i Norge?', answer: 'Oslo' },
-    { id: 'b', question: 'Hvor ligger Slottet?', answer: '\u004F\u0073\u006C\u006F' },          // O-s-l-o (ASCII — identisk med Oslo etter NFKC)
-    { id: 'c', question: 'Hva er Norges lengste elv?', answer: 'Glomma' },
-    { id: 'd', question: 'Norges nest største by?', answer: 'Bergen' },
+    { id: 'aa', question: 'Møre og Romsdals største by?', answer: 'Ålesund' },
+    { id: 'bb', question: 'Hvor finner du Atlanterhavsparken?', answer: 'A\u030Alesund' },          // dekomponert Å — rå ulik, NFKC lik
+    { id: 'cc', question: 'Norges tredje største by?', answer: '\uFF34\u0072\u006F\u006E\u0064\u0068\u0065\u0069\u006D' }, // full-width T
+    { id: 'dd', question: 'Nest største by på Vestlandet?', answer: 'Bergen' },
   ];
-  // a og b har samme normaliserte svar ('oslo')
-  assert.equal(normalizeAnswer(unicodeCards[0].answer), 'oslo');
-  assert.equal(normalizeAnswer(unicodeCards[1].answer), 'oslo');
-  // Flervalg for kort 'a' skal ha 3 alternativer (Oslo, Glomma, Bergen) — ikke 4 (b er duplikat)
+  // Rå strenger er forskjellige
+  assert.notEqual(unicodeCards[0].answer, unicodeCards[1].answer);
+  // Normaliserte er identiske
+  assert.equal(normalizeAnswer(unicodeCards[0].answer), normalizeAnswer(unicodeCards[1].answer));
+  // cc er full-width T + ASCII, normaliseres til 'trondheim'
+  assert.equal(normalizeAnswer(unicodeCards[2].answer), 'trondheim');
+  // Flervalg for aa: 3 unike alternativer (Ålesund, Trondheim, Bergen) — bb er duplikat
   const q = questionFor(unicodeCards[0], unicodeCards, 'choice', false, () => .3);
   assert.equal(q.type, 'choice');
   const options = plain(q.options);
   assert.equal(options.length, 3);
-  // Ingen duplikater etter normalisering
   assert.equal(new Set(options.map(normalizeAnswer)).size, options.length);
+  // Nøyaktig ett korrekt alternativ (Ålesund, uavhengig av form)
+  assert.equal(options.filter(value => normalizeAnswer(value) === normalizeAnswer(unicodeCards[0].answer)).length, 1);
 });
 
 test('reversed cards with identical normalized questions only allow written, and questionFor falls back to written for choice/truefalse', () => {
-  // To kort med spørsmål som bare skiller seg i Unicode-form (sammensatt vs dekomponert Å)
+  // Tre kort der to spørsmål er identiske etter NFKC (full-width a → a) og ett er ordrett likt
   const reverseCards = [
     { id: 'r1', question: 'Hva er fotosyntese?', answer: 'Planter lager sukker med lys.' },
     { id: 'r2', question: 'Hva er fotosyntese?', answer: 'Klorofyll fanger sollys.' },
     { id: 'r3', question: 'Hv\uFF41 er fotosyntese?', answer: 'CO₂ + H₂O → sukker + O₂' },
   ];
-  // r1 og r3 har identisk normalisert spørsmål ('hva er fotosyntese?') — full-width a → ASCII a
+  // r1 og r3: rå ulike, NFKC identiske
+  assert.notEqual(reverseCards[0].question, reverseCards[2].question);
   assert.equal(normalizeAnswer(reverseCards[0].question), normalizeAnswer(reverseCards[2].question));
-  // r2 har ordrett samme spørsmål som r1 — like i plain og normalisert form
-  assert.equal(normalizeAnswer(reverseCards[1].question), normalizeAnswer(reverseCards[2].question));
-
-  // availableTypes i reversert modus: svar-siden er promptene (originale spørsmål)
-  // r1.question og r3.question er like → bare 2 unike normaliserte svar → kun 'written'
+  // Alle tre spørsmål normaliseres til 'hva er fotosyntese?' — kun 1 unikt svar i reversert modus
   const types = availableTypes(reverseCards, true);
   assert.deepEqual(plain(types), ['written'], 'bare written når spørsmålene er like etter normalisering');
 
