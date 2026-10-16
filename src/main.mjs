@@ -7,6 +7,7 @@ import { randomUUID } from 'node:crypto';
 import { Store } from './store.mjs';
 import { createBrainSpaces } from './brain-spaces.mjs';
 import { createBrainCommands } from './brain-commands.mjs';
+import { createAdminService } from './admin.mjs';
 import { createAiService } from './ai.mjs';
 import { importDocument } from './imports.mjs';
 import { searchSources } from './research.mjs';
@@ -22,7 +23,7 @@ const uiUrl = pathToFileURL(uiPath).href;
 if (process.env.SAMMEN_TEST_DATA) app.setPath('userData', path.resolve(process.env.SAMMEN_TEST_DATA));
 app.setName('Sammen');
 if (!process.env.SAMMEN_TEST_DATA && !app.requestSingleInstanceLock()) app.quit();
-let window, store, baseStore, spaces, brainCommands, sync, ai, oneNote, remoteDevice, updates;
+let window, store, baseStore, spaces, brainCommands, sync, ai, oneNote, remoteDevice, updates, admin;
 let quitting = false;
 let restartAfterUpdate = false, installingUpdate = false, updateTimer;
 const updatePreparation = createUpdatePreparation({ send: value => {
@@ -51,8 +52,13 @@ async function saveSource(projectId, source, origin = 'web') {
 }
 async function configureIpc(directory) {
   handle('getState', () => brainCommands.state());
+  handle('getAdminState', () => admin.getState());
+  handle('connectAdmin', input => admin.connect(input));
+  handle('disconnectAdmin', () => admin.disconnect());
+  handle('getAdminOverview', () => admin.getOverview());
+  handle('getAdminActivity', input => admin.getActivity(input));
   for (const [method, callback] of Object.entries(brainCommands.methods)) handle(method, callback);
-  handle('saveProfile', input => { store.saveProfile(input); const state = sync.state(); notify(state); return state; });
+  handle('saveProfile', async input => { await store.saveProfile(input); const state = sync.state(); notify(state); return state; });
   for (const operation of ['saveProject','saveItem','deleteItem','saveCard','createChat']) {
     handle(operation, async input => { await sync.mutate(operation, input); return sync.state(); });
   }
@@ -167,6 +173,7 @@ spaces = createBrainSpaces({ baseStore, directory, onChange: notify, onCollabora
 store = spaces.store; sync = spaces.sync;
 brainCommands = createBrainCommands({ spaces, publicUrl: () => process.env.SAMMEN_PUBLIC_BRAIN_URL || '', cancelActive: async () => { for (const controller of activeChats.values()) controller.abort(); }, onChange: notify });
 ai = await createAiService({directory,encrypt:value=>{ if (!safeStorage.isEncryptionAvailable()) throw new Error('Windows kan ikke beskytte innloggingen.'); return safeStorage.encryptString(value); },decrypt:value=>safeStorage.decryptString(Buffer.from(value)),openExternal,fetchImpl:(...args)=>net.fetch(...args)});
+admin = await createAdminService({ directory, canRemember: safeStorage.isEncryptionAvailable(), encrypt: value => { if (!safeStorage.isEncryptionAvailable()) throw new Error('Windows kan ikke beskytte adminnøkkelen.'); return safeStorage.encryptString(value); }, decrypt: value => safeStorage.decryptString(Buffer.from(value)), fetchImpl: (...args) => net.fetch(...args) });
 oneNote = createLocalOneNoteService({scriptPath:path.join(base.replace('app.asar','app.asar.unpacked'),'onenote-read.ps1')});
 remoteDevice = createRemoteDeviceService({
   runtimeDirectory: app.isPackaged ? path.join(process.resourcesPath, 'remote-device') : path.resolve(base, '..', '..', 'remote-device-bundle'),

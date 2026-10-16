@@ -138,6 +138,10 @@
       line.append(primaryButton(brain, hasConnection ? 'Forbindelse' : 'Koble til', () => hasConnection ? window.SammenSharing?.open?.() : openConnect(), hasConnection ? 'globe' : 'link'));
     }
     else if (!isPersonal(brain)) line.append(primaryButton(brain, 'Inviter', () => window.SammenSharing?.open?.(), 'users'));
+    if (window.SammenPeople) {
+      const people = window.SammenPeople.memberPeople(brain);
+      line.append(el('button', { type: 'button', id: `brain-space-members-${brain.id}`, class: 'brain-spaces-members', 'aria-label': `Medlemmer i ${brain.name || 'Brain'}: ${people.length}`, title: people.length ? people.map(person => `${person.name}${person.isYou ? ' (deg)' : ''}`).join(', ') : 'Medlemmer', 'aria-haspopup': 'dialog', disabled: busy, onclick: () => window.SammenPeople.openMembers(brain) }, people.length ? window.SammenPeople.stack(people, { size: 25, max: 3, decorative: true }) : icon('users', 15), el('span', { 'aria-hidden': 'true' }, people.length)));
+    }
     return line;
   }
   function contents() {

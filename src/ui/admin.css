@@ -1,0 +1,91 @@
+.admin-modal { width: min(960px, calc(100vw - 50px)); max-width: 960px; padding: 26px 30px; border: 1px solid #e5d9ef; border-radius: 22px; background: #fffbff; color: #7e678e; }
+.admin-modal .modal-head { margin-bottom: 18px; }
+.admin-modal .modal-head h2 { font-size: 22px; font-weight: 550; color: #7d5e91; }
+.admin-modal [hidden] { display: none !important; }
+.admin-panel { min-height: 420px; }
+.admin-loading { padding: 100px 20px; text-align: center; color: #aa92ba; font-size: 12px; }
+.admin-connect-view { max-width: 390px; margin: 8px auto 20px; }
+.admin-lock { display: grid; place-items: center; width: 65px; height: 65px; margin: 0 auto 17px; border-radius: 22px 25px 21px 24px; background: #eee2f7; color: #ad8ec3; box-shadow: 3px 4px 0 #f4e7de; }
+.admin-connect-view h3 { text-align: center; font-size: 17px; font-weight: 550; color: #9274a5; }
+.admin-connect-copy { margin: 9px 0 21px; color: #b09abe; font-size: 11px; line-height: 1.7; text-align: center; }
+.admin-connect-form .field label { color: #9b80ae; font-size: 11px; }
+.admin-connect-form .field input { border-color: #e4d6ed; border-radius: 11px; background: #fcf7ff; color: #7f638f; }
+.admin-connect-form .field input:focus-visible { outline-color: #ad88c8; }
+.admin-remember { display: flex; align-items: center; gap: 8px; color: #a68bb7; font-size: 11px; }
+.admin-remember input { accent-color: #ac8bc3; width: 14px; height: 14px; }
+.admin-remember:has(input:disabled) { opacity: .6; }
+.admin-session-note { display: block; margin: 8px 0 0 22px; color: #b8a4c4; font-size: 10px; }
+.admin-connect-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
+.admin-modal .button { background: #eaddf4; border: 1px solid #d8c3e7; border-radius: 10px; color: #8a659f; font-size: 11px; }
+.admin-modal .button:hover { background: #e1cdef; }
+.admin-modal .button-secondary { background: #faf5fe; border-color: #e7dbef; color: #a18ab0; }
+.admin-modal .button-text { border: 0; padding: 5px; background: transparent; color: #ab91ba; }
+.admin-modal .button-text:hover { background: #f4eaf9; }
+.admin-error { margin: 14px 0; padding: 10px 12px; border-radius: 10px; background: #faecef; color: #ad7684; font-size: 11px; line-height: 1.6; }
+.admin-workspace { min-width: 0; }
+.admin-server-line { display: flex; align-items: center; gap: 10px; margin: 0 0 22px; }
+.admin-server { display: flex; align-items: center; gap: 7px; min-width: 0; margin-right: auto; color: #b09bbf; font-size: 10px; }
+.admin-server > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.admin-connected { color: #94aa96; font-size: 10px; white-space: nowrap; }
+.admin-server-line .admin-refresh { border: 0; padding: 5px; background: transparent; }
+.admin-tab-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 20px; flex-wrap: wrap; }
+.admin-tabs { display: flex; align-items: center; gap: 4px; padding: 4px; border: 1px solid #e8dcef; border-radius: 12px; background: #f6effb; }
+.admin-tabs > button { padding: 8px 12px; border-radius: 8px; background: transparent; color: #af97bf; font-size: 11px; }
+.admin-tabs > button[aria-selected="true"] { background: #fffaff; color: #8d6ca4; box-shadow: 0 2px 0 #e2d3eb; }
+.admin-modal :focus-visible { outline: 2px solid #a17dba; outline-offset: 3px; }
+.admin-tab-panel:focus-visible { outline-offset: 5px; }
+.admin-tab-panel { max-height: min(54vh, 540px); min-height: 260px; overflow: auto; padding: 2px 3px 5px; }
+.admin-search { display: flex; align-items: center; gap: 8px; width: 190px; padding: 8px 10px; border: 1px solid #eadff1; border-radius: 10px; color: #b49cc3; background: #fcf8ff; }
+.admin-search input { width: 100%; min-width: 0; border: 0; padding: 0; background: transparent; color: #9d83af; font-size: 10px; outline: none; }
+.admin-search input::placeholder { color: #bda8ca; }
+.admin-search:focus-within { border-color: #c7acd9; }
+.admin-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 26px; }
+.admin-stat { display: flex; flex-direction: column; gap: 9px; align-items: flex-start; padding: 17px 18px; border: 1px solid #e9ddf0; border-radius: 16px; background: #f8f1fd; color: #baa1cb; }
+.admin-stat:nth-child(2) { background: #fdf2e9; border-color: #efe1d5; color: #c6a38e; }
+.admin-stat:nth-child(3) { background: #eef5ee; border-color: #e1eadf; color: #a2b49e; }
+.admin-stat:nth-child(4) { background: #eef4fb; border-color: #e0e8f1; color: #a5b7c9; }
+.admin-stat strong { color: #957ba6; font-size: 29px; font-weight: 500; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.admin-stat span { font-size: 10px; }
+.admin-section-heading { display: flex; align-items: center; justify-content: space-between; margin: 0 0 12px; }
+.admin-section-heading h3 { color: #a389b6; font-size: 12px; font-weight: 550; }
+.admin-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; min-height: 190px; padding: 25px; color: #c4afd1; }
+.admin-empty p { color: #b7a1c4; font-size: 12px; }
+.admin-table-scroll { width: 100%; overflow: auto; }
+.admin-table { width: 100%; border-collapse: collapse; text-align: left; font-size: 11px; }
+.admin-table th { padding: 8px 11px 13px; color: #b69dc6; font-size: 10px; font-weight: 500; }
+.admin-table td { padding: 12px 11px; border-top: 1px solid #efe6f5; color: #a58db5; }
+.admin-table td:last-child { color: #baa5c7; font-size: 10px; }
+.admin-person-cell { display: flex; align-items: center; gap: 10px; }
+.admin-brain-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.admin-brain-card { min-width: 0; padding: 17px; border: 1px solid #e8dbf1; border-radius: 16px; background: #fcf7ff; }
+.admin-brain-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.admin-brain-heading strong { min-width: 0; overflow-wrap: anywhere; font-size: 13px; font-weight: 550; color: #9473a9; }
+.admin-visibility { border-radius: 6px; padding: 4px 6px; background: #efe4f7; color: #ae91c2; font-size: 9px; }
+.admin-visibility.public { background: #e4edf6; color: #98afc5; }
+.admin-brain-counts { margin: 12px 0; color: #b69fc4; font-size: 10px; }
+.admin-brain-members summary { display: flex; align-items: center; gap: 9px; color: #ae93c0; font-size: 10px; cursor: pointer; }
+.admin-brain-members ul { list-style: none; display: flex; flex-direction: column; gap: 7px; padding: 10px 0 0; margin: 0; }
+.admin-brain-members li { display: flex; align-items: center; gap: 8px; color: #a58bb7; font-size: 10px; }
+.admin-brain-date { display: block; margin-top: 13px; color: #c1add0; font-size: 9px; }
+.admin-activity { list-style: none; padding: 0; margin: 0; }
+.admin-activity > li { display: flex; align-items: flex-start; gap: 11px; padding: 14px 5px; }
+.admin-activity > li + li { border-top: 1px solid #f0e7f6; }
+.admin-activity-person { flex: 1; min-width: 0; }
+.admin-activity-person p { display: flex; align-items: baseline; flex-wrap: wrap; gap: 7px; margin: 2px 0 5px; color: #ad96bd; font-size: 10px; line-height: 1.4; }
+.admin-activity-person strong { color: #9475a7; font-size: 11px; font-weight: 550; }
+.admin-activity-person small { display: block; color: #c2add0; font-size: 9px; }
+.admin-target { display: block; margin: 0 0 5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #af95c0; font-size: 11px; }
+.admin-activity time { color: #c0aaca; font-size: 9px; white-space: nowrap; padding-top: 4px; }
+.admin-checked { margin: 13px 0 0; color: #c7b4d1; font-size: 9px; text-align: right; }
+@media (max-width: 700px) {
+  .admin-modal { width: calc(100vw - 30px); padding: 21px 18px; }
+  .admin-tabs > button { padding: 7px 9px; font-size: 10px; }
+  .admin-search { width: 100%; }
+  .admin-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+  .admin-stat { padding: 13px 15px; }
+  .admin-brain-grid { grid-template-columns: 1fr; }
+  .admin-activity > li { flex-wrap: wrap; }
+  .admin-activity time { margin-left: 41px; }
+  .admin-server-line { flex-wrap: wrap; }
+  .admin-server { flex-basis: 100%; }
+}

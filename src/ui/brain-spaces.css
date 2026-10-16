@@ -20,6 +20,8 @@
 .brain-spaces-status.connected { color: #8a9b8b; }
 .brain-spaces .brain-spaces-action { min-height: 25px; padding: 4px 7px; gap: 5px; border: 0; border-radius: 7px; background: transparent; color: #9579a9; box-shadow: none; font-size: 10px; font-weight: 500; }
 .brain-spaces .brain-spaces-action:hover { background: #f0e6f7; color: #7f5d95; }
+.brain-spaces-members { display: inline-flex; align-items: center; gap: 7px; min-height: 29px; margin-left: auto; padding: 2px 6px; border-radius: 10px; background: transparent; color: #a18aaf; font-size: 10px; }
+.brain-spaces-members:hover { background: #f0e6f7; }
 .brain-spaces button:focus-visible,
 .brain-spaces select:focus-visible { outline: 2px solid #9878b1; outline-offset: 3px; }
 .brain-spaces-modal { max-width: 470px; border: 1px solid #e6dbee; border-radius: 21px; background: #fffbff; color: #6f5d7e; box-shadow: 0 8px 0 #5b3b6e12, 0 24px 70px #39234126; }

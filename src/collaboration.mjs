@@ -22,7 +22,7 @@ export function createFileCollaboration({ store, projectId }) {
     const current = load(id);
     return { id, item: currentItem(id), update: current.model.encode(stateVector), stateVector: current.model.vector() };
   }
-  function update({ id, update, stateVector }, author) {
+  function update({ id, update, stateVector }, author, actor) {
     const item = currentItem(id), existing = load(id);
     const candidate = createModel({ item, update: existing.model.encode() });
     try {
@@ -40,7 +40,7 @@ export function createFileCollaboration({ store, projectId }) {
       store.db.exec('BEGIN IMMEDIATE');
       let saved;
       try {
-        saved = changed ? store.saveItem(projected, author) : item;
+        saved = changed ? store.saveItem(projected, author, actor) : item;
         store.setMeta(`collaboration:${id}`, { version: 1, revision: saved.revision, update: complete });
         store.db.exec('COMMIT');
       } catch (error) { store.db.exec('ROLLBACK'); throw error; }

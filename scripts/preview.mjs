@@ -7,6 +7,7 @@ import tls from 'node:tls';
 import { Store } from '../src/store.mjs';
 import { createBrainSpaces } from '../src/brain-spaces.mjs';
 import { createBrainCommands } from '../src/brain-commands.mjs';
+import { createAdminService } from '../src/admin.mjs';
 import { createUpdateService } from '../src/updates.mjs';
 
 if (tls.setDefaultCACertificates && tls.getCACertificates) tls.setDefaultCACertificates([...tls.getCACertificates('bundled'), ...tls.getCACertificates('system')]);
@@ -15,6 +16,7 @@ const updates = createUpdateService({ currentVersion: JSON.parse(await readFile(
 const updateStatus = value => ({ ...value, automatic: false, reason: 'Automatisk installasjon er tilgjengelig i den installerte Windows-appen.' });
 const profile = process.env.SAMMEN_PREVIEW_PROFILE || join(dirname(project), 'sandbox-preview-profile');
 await mkdir(profile, { recursive: true });
+const admin = await createAdminService({ directory: join(profile, 'admin-preview'), canRemember: false, allowLoopbackHttp: true, encrypt: () => { throw new Error('Sandboxen husker ikke adminnøkler.'); }, decrypt: () => { throw new Error('Sandboxen husker ikke adminnøkler.'); } });
 const baseStore = new Store(join(profile, 'brain.sqlite'));
 let store = baseStore;
 if (!store.getMeta('sandboxSeeded')) {
@@ -67,8 +69,13 @@ async function invoke(method, input) {
 }
 async function dispatch(method, input) {
   switch (method) {
+    case 'getAdminState': return admin.getState();
+    case 'connectAdmin': return admin.connect(input);
+    case 'disconnectAdmin': return admin.disconnect();
+    case 'getAdminOverview': return admin.getOverview();
+    case 'getAdminActivity': return admin.getActivity(input);
     case 'getState': return snapshot();
-    case 'saveProfile': store.saveProfile(input); return snapshot();
+    case 'saveProfile': await store.saveProfile(input); return snapshot();
     case 'saveProject': case 'saveItem': case 'deleteItem': case 'saveCard': case 'createChat': await sync.mutate(method, input); return snapshot();
     case 'reviewCard': {
       const card = sync.state().flashcards.find(card => card.id === input.id);
@@ -102,7 +109,7 @@ const bridge = () => `
 (() => {
   const token = ${JSON.stringify(token)};
   const listeners = new Set(), fileListeners = new Set();
-  const names = ['getState','getBrainSpaces','switchBrain','createBrain','joinBrain','connectPublicBrain','startBrainHosting','startInternetBrain','saveProfile','saveProject','saveItem','deleteItem','saveCard','reviewCard','createChat','chat','cancelChat','getAiSettings','getUpdateStatus','checkForUpdates','installUpdate','updateAiSettings','connectChatGPT','disconnectChatGPT','listModels','importDocuments','searchSources','addSource','exportProject','importProject','getSyncStatus','startHosting','stopHosting','joinGroup','leaveGroup','startInternetRoom','openSharedFile','updateSharedFile','closeSharedFile','getIntegrationInfo','doctorOneNote','listOneNotePages','importOneNotePages','openOriginal','getRemoteDeviceStatus','startRemoteDevice','stopRemoteDevice'];
+  const names = ['getState','getBrainSpaces','switchBrain','createBrain','joinBrain','connectPublicBrain','startBrainHosting','startInternetBrain','saveProfile','saveProject','saveItem','deleteItem','saveCard','reviewCard','createChat','chat','cancelChat','getAiSettings','getUpdateStatus','checkForUpdates','installUpdate','updateAiSettings','connectChatGPT','disconnectChatGPT','listModels','importDocuments','searchSources','addSource','exportProject','importProject','getSyncStatus','startHosting','stopHosting','joinGroup','leaveGroup','startInternetRoom','openSharedFile','updateSharedFile','closeSharedFile','getIntegrationInfo','doctorOneNote','listOneNotePages','importOneNotePages','openOriginal','getRemoteDeviceStatus','startRemoteDevice','stopRemoteDevice','getAdminState','connectAdmin','disconnectAdmin','getAdminOverview','getAdminActivity'];
   let lastState = '';
   let polling = false;
   async function call(method, input) {
@@ -131,7 +138,7 @@ const bridge = () => `
   }, 700);
 })();
 `;
-const files = new Map([['/', ['index.html','text/html']], ['/index.html', ['index.html','text/html']], ...['app', 'brain-physics', 'brain-spaces', 'brain', 'mindmap', 'study', 'file-sources', 'sharing', 'live-file', 'collaboration-model','device-setup','sidechat','updates'].map(name => ['/' + name + '.js', [name + '.js', 'text/javascript']]), ...['styles', 'minimal', 'brain-spaces', 'brain', 'mindmap', 'study', 'file-sources', 'sharing', 'live-file','device-setup','sidechat','updates'].map(name => ['/' + name + '.css', [name + '.css', 'text/css']])]);
+const files = new Map([['/', ['index.html','text/html']], ['/index.html', ['index.html','text/html']], ...['app', 'people', 'admin', 'brain-physics', 'brain-spaces', 'brain', 'mindmap', 'study', 'file-sources', 'sharing', 'live-file', 'collaboration-model','device-setup','sidechat','updates'].map(name => ['/' + name + '.js', [name + '.js', 'text/javascript']]), ...['styles', 'minimal', 'people', 'admin', 'brain-spaces', 'brain', 'mindmap', 'study', 'file-sources', 'sharing', 'live-file','device-setup','sidechat','updates'].map(name => ['/' + name + '.css', [name + '.css', 'text/css']])]);
 const server = createServer(async (request, response) => {
   if (request.headers.host !== '127.0.0.1:' + port) { response.writeHead(403).end(); return; }
   const url = new URL(request.url, 'http://127.0.0.1:' + port);

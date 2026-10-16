@@ -49,7 +49,7 @@ export function createBrainCommands({ spaces, cancelActive = async () => {}, onC
       } catch (error) { await spaces.switchBrain({ id: previous }); throw error; }
     }),
     startBrainHosting: () => transition(async () => { requireInvited(); return spaces.sync.startHosting({ scope: 'brain' }); }),
-    startInternetBrain: input => transition(async () => { requireInvited(); return spaces.sync.startInternetRoom({ url: input?.url, createKey: input?.createKey, scope: 'brain' }); })
+    startInternetBrain: input => transition(async () => { requireInvited(); return spaces.sync.startInternetRoom({ url: input?.url, createKey: input?.createKey, scope: 'brain', name: active().name }); })
   };
   return { ...methods, state, runScoped, isBusy: () => changing, assertPublicWritable, methods };
 }

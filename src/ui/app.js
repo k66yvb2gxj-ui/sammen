@@ -142,6 +142,7 @@ function applyState(value, options = {}) {
   if (ui.projectId && !state.projects.some(p => p.id === ui.projectId)) ui.projectId = null;
   for (const sourceId of ui.sourceIds) if (!state.items.some(item => item.id === sourceId)) ui.sourceIds.delete(sourceId);
   renderShell();
+  if (editor) refreshEditorContributors(state.items.find(item => item.id === editor.id) || editor);
   if (editor && ui.view === 'brain' && window.SammenLiveFile?.isActive?.(editor) && !options.force) return;
   if (ui.view === 'settings' && Object.keys(ui.settingsDrafts).length && !options.force) return;
   if (editor?.dirty && ui.view === 'brain' && !options.force) {
@@ -197,7 +198,8 @@ function renderShell() {
   document.getElementById('view-label').textContent = navViews.find(([key]) => key === ui.view)?.[1] || 'Oversikt';
   const name = state.user.name || 'Din profil';
   document.getElementById('profile-name').textContent = name;
-  document.getElementById('profile-avatar').textContent = name.charAt(0).toUpperCase();
+  const profileAvatar = document.getElementById('profile-avatar');
+  profileAvatar.replaceChildren(window.SammenPeople?.avatar(state.user, { size: 30, decorative: true }) || name.charAt(0).toUpperCase());
   const sync = ui.sync || state.sync;
   window.SammenSharing?.update?.(sync);
   window.SammenBrainSpaces?.update?.();
@@ -292,12 +294,19 @@ function markDirty() {
   if (wordCount) wordCount.textContent = `${(editor.content.match(/\S+/g) || []).length} ord`;
   window.SammenLiveFile?.edited?.(editor);
 }
+function editorContributors(item) {
+  return window.SammenPeople?.contributors(item) || el('span', {}, isAi(item) ? 'KI-utkast' : item.author || 'Ukjent forfatter');
+}
+function refreshEditorContributors(item) {
+  const target = document.getElementById('editor-contributors');
+  if (target && editor?.id === item?.id) target.replaceChildren(editorContributors(item));
+}
 function renderEditor(item) {
   const ai = isAi(item);
   const panel = el('section', { class: `panel editor-panel${item.type === 'mindmap' ? ' mindmap-editor' : ''}`, 'aria-label': 'Rediger element' });
   panel.append(el('div', { class: 'editor-toolbar' }, el('div', { class: 'editor-tags' }, item.type === 'source' ? el('span', { class: 'chip source-chip' }, 'Kilde') : null, ai ? el('span', { class: 'chip ai-chip' }, icon('sparkle', 10), 'KI') : null), el('div', { class: 'editor-actions' }, btn('Flashcard', () => cardModal(editor), 'button-quiet button-small', 'cards'), el('button', { class: 'icon-button', title: 'Slett element', 'aria-label': 'Slett element', onclick: () => deleteItemModal(item) }, icon('trash', 14)))));
   const body = el('div', { class: 'editor-body' });
-  body.append(el('input', { id: 'editor-title', class: 'editor-title', 'aria-label': 'Tittel', placeholder: 'Tittel', value: editor.title, maxlength: 200, oninput: event => { editor.title = event.target.value; markDirty(); } }), el('div', { class: 'editor-meta' }, el('span', {}, item.author || state.user.name || 'Elev'), el('span', { class: 'meta-divider' }, '·'), el('span', {}, dateText(item.updatedAt) || 'nå')));
+  body.append(el('input', { id: 'editor-title', class: 'editor-title', 'aria-label': 'Tittel', placeholder: 'Tittel', value: editor.title, maxlength: 200, oninput: event => { editor.title = event.target.value; markDirty(); } }), el('div', { class: 'editor-meta' }, el('span', { id: 'editor-contributors' }, editorContributors(item)), el('span', { class: 'meta-divider' }, '·'), el('span', {}, dateText(item.updatedAt) || 'nå')));
   if (ai) body.append(el('div', { class: 'editor-notice' }, icon('sparkle', 13), editor.status === 'reviewed' ? 'KI · Kontrollert av elev' : 'KI-utkast · Kontroller kildene.'));
   if (item.sourceUrl || item.sourceName) {
     const sourceBox = el('div', { class: 'editor-source' }, el('div', {}, 'KILDE'), externalLink(item.sourceName || item.sourceUrl, item.sourceUrl));
@@ -901,22 +910,25 @@ function importChooser() {
   openModal('Importer', '', options);
 }
 function profileModal() {
-  if (window.SammenSharing?.isBusy?.()) return;
+  if (window.SammenSharing?.isBusy?.() || window.SammenBrainSpaces?.isBusy?.()) return;
   const name = el('input', { id: 'profile-display-name', required: true, maxlength: 80, value: state.user.name || '', autocomplete: 'given-name' });
-  const submit = el('button', { type: 'submit', class: 'button button-secondary' }, 'Lagre navn');
+  let avatar = state.user.avatar ? { ...state.user.avatar } : undefined;
+  const picker = window.SammenPeople?.picker(state.user, value => { avatar = value; });
+  const submit = el('button', { type: 'submit', class: 'button button-secondary' }, 'Lagre profil');
   const form = el('form', { onsubmit: async event => {
     event.preventDefault();
     submit.disabled = true;
     try {
-      applyState(await invoke('saveProfile', { name: name.value.trim() }));
+      applyState(await invoke('saveProfile', { name: name.value.trim(), ...(avatar ? { avatar } : {}) }));
       if (form.isConnected) closeModal();
-      toast('Navnet er lagret.');
+      toast('Profilen er lagret.');
     } catch (error) { showError(error); }
     finally { if (submit.isConnected) submit.disabled = false; }
-  } }, field('Navnet ditt', name), el('div', { class: 'modal-actions' }, submit));
+  } }, field('Navnet ditt', name), picker, el('div', { class: 'modal-actions' }, submit));
   const device = el('div', { class: 'profile-device-action' }, btn('Denne PC-en', () => window.SammenDeviceSetup?.open?.(), 'button-secondary', 'link'), el('p', { class: 'form-help' }, 'Koble din AI til filer og programmer på denne PC-en.'));
   const updates = el('div', { class: 'profile-device-action' }, btn('Oppdateringer', () => window.SammenUpdates?.open?.(), 'button-secondary', 'refresh'));
-  openModal('Profil', '', el('div', {}, form, device, updates));
+  const administration = el('div', { class: 'profile-device-action' }, btn('Admin', () => window.SammenAdmin?.open?.(), 'button-secondary', 'lock'));
+  openModal('Profil', '', el('div', {}, form, device, updates, administration));
   name.focus();
 }
 

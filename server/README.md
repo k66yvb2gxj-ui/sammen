@@ -20,6 +20,14 @@ Sett `SAMMEN_PUBLIC_BRAIN=1` i `.env` for å aktivere én separat offentlig Brai
 
 `POST /api/public-brain/join` gir en midlertidig klientøkt uten invitasjonskode eller opprettelsesnøkkel. Alle som når denne serveren, kan lese og redigere den offentlige Brainen. Det er ingen kontoidentitet eller moderering ennå; serveroperatøren må velge om dette skal aktiveres. Data lagres separat i `public-brain.sqlite`. Ingen offentlig server er satt opp av kodeendringen.
 
+## Adminoversikt
+
+Sett den valgfrie `SAMMEN_ADMIN_KEY` til en egen tilfeldig nøkkel på minst 24 tegn for å aktivere en lesbar oversikt over serverens delte Brains, registrerte deltakere og aktivitet. Bruk en annen nøkkel enn `SAMMEN_CREATE_KEY`. Tom verdi slår admin-API-et helt av. Nøkkelen brukes som `Authorization: Bearer …` til `GET /api/admin/overview` og `GET /api/admin/activity?limit=50` (maks 200 hendelser). Den skal aldri legges i nettadressen, offentlige klientinnstillinger, invitasjoner eller GitHub.
+
+Oversikten viser bare data på denne fellesromserveren: Brain-ID og navn, prosjekt- og filantall, deltakernes oppgitte profiler og siste aktivitet. Den henter ingen private Brains eller filer fra elev-PC-er. Deltakere er profiler som har blitt med via invitasjon eller offentlig tilkobling; dette verifiserer ingen skolekonto.
+
+Når admin er aktivert, beholdes de siste 5 000 aktivitetene i `admin-activity.sqlite`: innmelding, utmelding, profilendring, oppretting/endring/sletting av filer, prosjektendringer og nye rom. Loggen inneholder deltaker-ID, navn og profilikon samt rom-ID og eventuell fil-/prosjekt-ID og tittel. Filinnhold, invitasjonskoder og økttoken logges ikke. Å åpne filer eller hente status lager ingen aktivitet. Oversikten kan ikke slette, sperre eller fjernstyre noe. Historikk fra før aktivering finnes ikke.
+
 ## Drift og begrensninger
 
 Ta sikkerhetskopi av `sammen-data`-volumet. Serveren krever varig disk og én skriveprosess per datamappe; dette oppsettet skal ikke skaleres til flere parallelle containere som skriver de samme SQLite-filene. Siste mottatte arbeidsrom og uavleverte redigeringsoppdateringer lagres lokalt og forsøkes synkronisert igjen når forbindelsen er tilbake. En klientøkt varer opptil åtte timer; utløpt økt krever ny tilkobling. Lokale kopier slettes ikke ved vanlig avslutning.

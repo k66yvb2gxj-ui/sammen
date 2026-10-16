@@ -133,6 +133,8 @@
 .brain-workspace .brain-graph-node:focus-visible .brain-node-shape,
 .brain-workspace .brain-graph-node.selected .brain-node-shape { stroke: #a383bc; stroke-width: 2.8; }
 .brain-workspace .brain-node-title { fill: #816b93; font-size: 12px; pointer-events: none; }
+.brain-workspace .brain-node-contributors { pointer-events: none; }
+.brain-workspace #editor-contributors { display: inline-flex; align-items: center; }
 .brain-workspace .brain-graph-legend { display: flex; align-items: center; justify-content: center; gap: 24px; flex-wrap: wrap; padding: 14px 24px 18px; color: #927ba4; font-size: 9px; flex-shrink: 0; }
 .brain-workspace .brain-graph-legend > span { display: flex; align-items: center; gap: 7px; }
 .brain-workspace .brain-legend-line { width: 20px; border-top: 2px solid #cdb6e0; }

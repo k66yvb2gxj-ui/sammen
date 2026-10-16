@@ -137,7 +137,7 @@ test('persisted session tokens are scoped to one invitation and shared project',
   const first = createRoomHandler({ store, projectId: firstProject, secret, hostPresence: false });
   first.join({ secret, name: 'Ada' }); first.close();
   const resumed = createRoomHandler({ store, projectId: firstProject, secret, hostPresence: false });
-  assert.equal(resumed.status().members.length, 1); resumed.close();
+  assert.equal(resumed.status().members.length, 0); assert.equal(resumed.status().roster.length, 1); resumed.close();
   const second = createRoomHandler({ store, projectId: secondProject, secret, hostPresence: false });
   assert.equal(second.status().members.length, 0); second.close();
   const rotated = createRoomHandler({ store, projectId: firstProject, secret: randomBytes(32).toString('base64url'), hostPresence: false });

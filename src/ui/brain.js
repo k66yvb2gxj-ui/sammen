@@ -509,13 +509,25 @@
       };
       group.addEventListener('click', event => { if (event.target.closest('.brain-node-shape, .brain-node-icon')) open(); });
       group.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); open(); } });
-      group.append(svgEl('title', {}, node.title));
+      const people = node.item ? window.SammenPeople?.contributorPeople(node.item) || [] : [];
+      const peopleLabel = people.map(person => person.label || person.name).join(', ');
+      group.append(svgEl('title', {}, peopleLabel ? `${node.title}\nBidragsytere: ${peopleLabel}` : node.title));
+      if (peopleLabel) group.setAttribute('aria-description', `Bidragsytere: ${peopleLabel}`);
       group.append(svgEl('circle', { cx: 0, cy: 0, r: node.kind === 'card' ? 19 : 23, class: 'brain-node-shape' }));
       const symbol = icon(node.kind === 'card' ? 'cards' : kindIcon(node.item), node.kind === 'card' ? 18 : 21);
       symbol.setAttribute('x', -(node.kind === 'card' ? 9 : 10.5));
       symbol.setAttribute('y', -(node.kind === 'card' ? 9 : 10.5));
       symbol.classList.add('brain-node-icon');
       group.append(symbol);
+      if (people.length && window.SammenPeople) {
+        const badges = svgEl('g', { class: 'brain-node-contributors', 'aria-hidden': 'true' });
+        people.slice(0, 2).forEach((person, index) => {
+          const badge = window.SammenPeople.avatar(person, { size: 18, decorative: true });
+          badge.setAttribute('x', 8 + index * 12); badge.setAttribute('y', 8);
+          badges.append(badge);
+        });
+        group.append(badges);
+      }
       const title = node.title.length > 21 ? `${node.title.slice(0, 20)}…` : node.title;
       group.append(svgEl('text', { x: 0, y: 44, 'text-anchor': 'middle', class: 'brain-node-title' }, title));
       world.append(group);

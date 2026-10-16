@@ -90,12 +90,13 @@ test('catalog selection and all Brain contents survive a fresh service instance'
 
 test('profile identity is shared across Brains and persisted without copying personal records', async t => {
   const { spaces, baseStore } = fixture(t);
-  spaces.store.saveProfile({ name: 'Hugo' });
+  const avatar = { style: 'owl', color: 'peach' };
+  await spaces.store.saveProfile({ name: 'Hugo', avatar });
   const userId = spaces.state().user.id;
   const group = await spaces.createBrain({ name: 'Faggruppe' });
-  assert.deepEqual(group.user, { id: userId, name: 'Hugo' });
-  spaces.store.saveProfile({ name: 'Nytt navn' });
-  assert.deepEqual(baseStore.getMeta('user'), { id: userId, name: 'Nytt navn' });
+  assert.deepEqual(group.user, { id: userId, name: 'Hugo', avatar });
+  await spaces.store.saveProfile({ name: 'Nytt navn' });
+  assert.deepEqual(baseStore.getMeta('user'), { id: userId, name: 'Nytt navn', avatar });
   const personal = await spaces.switchBrain({ id: 'personal' });
   assert.equal(personal.user.name, 'Nytt navn');
   const publicState = await spaces.switchBrain({ id: 'public' });
@@ -201,7 +202,7 @@ test('catalog contains no invitation credentials and the public Brain starts dis
   assert.equal(spaces.store.getMeta('sync:client'), null);
   const publicState = await spaces.switchBrain({ id: 'public' });
   const publicBrain = publicState.brainSpace.brains.find(brain => brain.isPublic);
-  assert.deepEqual(publicBrain.connection, { mode: 'local', connected: false, transport: null, memberCount: 1 });
+  assert.deepEqual(publicBrain.connection, { mode: 'local', connected: false, transport: null, memberCount: 0 });
   assert.equal(JSON.stringify(publicState).includes('session-secret'), false);
 });
 

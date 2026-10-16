@@ -86,7 +86,8 @@
     const beforeMap = JSON.stringify(draft.mindmap);
     const merged = current.model.read({ ...draft, ...(payload.item || {}) });
     if (payload.item) state.items = state.items.map(item => item.id === payload.item.id ? payload.item : item);
-    for (const field of ['title', 'content', 'status', 'citations', 'mindmap', 'revision', 'updatedAt', 'author']) if (merged[field] !== undefined) draft[field] = merged[field];
+    for (const field of ['title', 'content', 'status', 'citations', 'mindmap', 'revision', 'updatedAt', 'author', 'contributors', 'legacyAuthor']) if (merged[field] !== undefined) draft[field] = merged[field];
+    refreshEditorContributors(draft);
     current.draft = draft;
     if (draft.type === 'mindmap') {
       if (beforeMap !== JSON.stringify(draft.mindmap) && !busyMap(draft)) renderMain();

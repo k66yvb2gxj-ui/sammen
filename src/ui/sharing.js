@@ -81,6 +81,12 @@
     if (applied) await open();
   }
   function members(status) {
+    if (window.SammenPeople) {
+      const brain = activeBrain();
+      const people = window.SammenPeople.memberPeople(brain, { status });
+      const online = people.filter(person => person.online).length;
+      return el('div', { class: 'sharing-members' }, el('div', { class: 'sharing-members-title' }, icon('users', 14), `${people.length} ${people.length === 1 ? 'medlem' : 'medlemmer'}${online ? ` · ${online} tilkoblet` : ''}`), window.SammenPeople.membersList(brain, { status }));
+    }
     const people = Array.isArray(status.members) ? status.members : Array.isArray(status.users) ? status.users : [];
     return el('div', { class: 'sharing-members' }, el('div', { class: 'sharing-members-title' }, icon('users', 14), `${status.memberCount ?? people.length} tilkoblet`), people.length ? el('ul', {}, people.map(person => el('li', {}, el('span', { class: 'sharing-avatar', 'aria-hidden': 'true' }, String(person.name || 'Elev').slice(0, 1).toUpperCase()), el('span', {}, person.name || 'Elev'), person.userId && person.userId === state.user.id ? el('span', { class: 'sharing-you' }, 'deg') : null, person.editingItemId ? el('span', { class: 'sharing-editing', title: state.items.find(item => item.id === person.editingItemId)?.title || 'Redigerer en fil' }, 'redigerer') : null))) : null);
   }

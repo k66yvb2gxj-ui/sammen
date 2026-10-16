@@ -8,6 +8,7 @@ import { generate } from 'selfsigned';
 import { mutateStore } from './store.mjs';
 import { createFileCollaboration } from './collaboration.mjs';
 import { createModel } from './collaboration-model.mjs';
+import { normalizePerson } from './people.mjs';
 
 const equal = (a, b) => { const aa = Buffer.from(a || ''), bb = Buffer.from(b || ''); return aa.length === bb.length && timingSafeEqual(aa, bb); };
 const fingerprint = raw => createHash('sha256').update(raw).digest('hex');
@@ -63,37 +64,58 @@ export function exportBrain(store) {
   return { format: 'sammen-brain', version: 1, projects: store.list('project').map(project => store.exportProject(project.id)) };
 }
 
-export function createRoomHandler({ store, projectId, scope = 'project', secret, publicJoin = false, maxSessions = publicJoin ? 300 : 30, onChange = () => {}, onCollaboration = () => {}, hostPresence = true }) {
+export function createRoomHandler({ store, projectId, scope = 'project', secret, publicJoin = false, maxSessions = publicJoin ? 300 : 30, onChange = () => {}, onCollaboration = () => {}, onActivity = () => {}, hostPresence = true }) {
   if (!['project', 'brain'].includes(scope) || (publicJoin && scope !== 'brain')) throw new Error('Ugyldig delingsområde.');
   if (scope === 'project') store.project(projectId);
   const scopedProject = scope === 'brain' ? undefined : projectId;
   const snapshot = () => ({ ...store.snapshot(scopedProject), scope });
   const sessionScope = createHash('sha256').update(`${scope}:${scopedProject || ''}:${secret}:${publicJoin}`).digest('hex');
   const savedSessions = store.getMeta('room:sessions');
-  const sessions = new Map((savedSessions?.scope === sessionScope ? savedSessions.sessions : []).filter(([, s]) => Date.now() - s.lastSeen < 8 * 3600000));
+  const sessions = new Map((savedSessions?.scope === sessionScope ? savedSessions.sessions : []).filter(([, s]) => Date.now() - s.lastSeen < 8 * 3600000).map(([token, session]) => [token, { ...session, presenceSeen: 0, editingItemId: null }]));
+  const rosterKey = scope === 'brain' ? 'room:roster:brain' : `room:roster:project:${projectId}`;
+  const roster = new Map();
+  for (const member of store.getMeta(rosterKey) || []) {
+    try { const person = normalizePerson(member); roster.set(person.id, { ...person, userId: person.id, joinedAt: member.joinedAt, lastSeen: member.lastSeen }); } catch { /* Ignore malformed legacy roster entries. */ }
+  }
+  let rosterSavedAt = 0;
+  const persistRoster = () => { store.setMeta(rosterKey, [...roster.values()]); rosterSavedAt = Date.now(); };
+  const personFor = session => normalizePerson(session ? { id: session.userId || session.id, name: session.name, avatar: session.avatar } : store.getMeta('user'));
+  function rememberPerson(person, { seenAt = Date.now(), force = false } = {}) {
+    const old = roster.get(person.id), now = new Date(seenAt).toISOString();
+    const changed = !old || old.name !== person.name || JSON.stringify(old.avatar) !== JSON.stringify(person.avatar);
+    roster.set(person.id, { ...person, userId: person.id, joinedAt: old?.joinedAt || now, lastSeen: now });
+    if (force || changed || Date.now() - rosterSavedAt >= 10000) persistRoster();
+  }
   const collaboration = createFileCollaboration({ store, projectId: scopedProject });
   let hostFile = null, hostSeen = 0;
   const persistSessions = () => store.setMeta('room:sessions', { scope: sessionScope, sessions: [...sessions] });
-  const actor = () => ({ id: `host:${store.getMeta('user').id}`, userId: store.getMeta('user').id, name: store.getMeta('user').name, editingItemId: Date.now() - hostSeen < 15000 ? hostFile : null, lastSeen: Date.now() });
-  const members = () => [...(hostPresence ? [actor()] : []), ...[...sessions.values()].filter(s => Date.now() - s.lastSeen < 15000).map(s => ({ id: s.id, userId: s.userId || s.id, name: s.name, editingItemId: s.editingItemId || null, lastSeen: s.lastSeen }))];
-  const status = () => ({ members: members(), memberCount: members().length });
-  function presence(id, session) { if (session) { session.editingItemId = id; session.lastSeen = Date.now(); } else { hostFile = id; hostSeen = Date.now(); } }
+  const actor = () => { const person = personFor(); return { ...person, id: `host:${person.id}`, userId: person.id, editingItemId: Date.now() - hostSeen < 15000 ? hostFile : null, lastSeen: Date.now() }; };
+  const members = () => [...(hostPresence ? [actor()] : []), ...[...sessions.values()].filter(s => Date.now() - (s.presenceSeen || 0) < 15000).map(s => ({ ...personFor(s), id: s.id, userId: s.userId || s.id, editingItemId: s.editingItemId || null, lastSeen: s.lastSeen }))];
+  const status = () => { if (hostPresence) rememberPerson(personFor()); const online = members(); return { members: online, memberCount: online.length, roster: [...roster.values()] }; };
+  function presence(id, session) { if (session) { session.editingItemId = id; session.lastSeen = session.presenceSeen = Date.now(); } else { hostFile = id; hostSeen = Date.now(); } }
   function openFile(input, session) { presence(input.id, session); return { ...collaboration.response(input.id, input.stateVector), members: members().filter(m => m.editingItemId === input.id), active: true }; }
   function updateFile(input, session) {
-    const result = collaboration.update(input, session?.name || store.getMeta('user').name);
+    const person = personFor(session);
+    const previous = store.get('item', input.id);
+    const result = collaboration.update(input, person.name, person);
+    if (previous && result.item.revision !== previous.revision) onActivity({ type: 'file.updated', actor: person, target: { id: result.item.id, title: result.item.title } });
     presence(input.id, session); onChange(snapshot());
     const response = { ...result, members: members().filter(m => m.editingItemId === input.id), active: true };
     onCollaboration(response); return response;
   }
   function closeFile({ id }, session) { if (session?.editingItemId === id) session.editingItemId = null; else if (!session && hostFile === id) hostFile = null; return { ok: true }; }
-  function mutate(operation, input, author = store.getMeta('user').name) {
+  function mutate(operation, input, author = store.getMeta('user').name, actor = personFor()) {
+    const previous = operation === 'saveProject' ? (input.id ? store.get('project', input.id) : null) : ['saveItem', 'deleteItem'].includes(operation) ? (input.id ? store.get('item', input.id) : null) : null;
     const targetProject = operation === 'appendMessage' ? store.get('chat', input.chatId)?.projectId : input.projectId;
     const citations = operation === 'appendMessage' ? input.message?.citations : operation === 'saveItem' ? input.citations : [];
     if (Array.isArray(citations)) for (const citation of citations) {
       if (citation?.sourceId && store.get('item', citation.sourceId)?.projectId !== targetProject) throw new Error('Kilden må finnes i det delte prosjektet.');
     }
-    const result = mutateStore(store, operation, input, { projectId: scopedProject, author });
+    const result = mutateStore(store, operation, input, { projectId: scopedProject, author, actor });
     if (operation === 'saveItem') collaboration.reconcile(result);
+    if (operation === 'saveItem' && (!previous || previous.revision !== result.revision)) onActivity({ type: previous ? 'file.updated' : 'file.created', actor, target: { id: result.id, title: result.title } });
+    if (operation === 'deleteItem' && previous && !store.get('item', previous.id)) onActivity({ type: 'file.deleted', actor, target: { id: previous.id, title: previous.title } });
+    if (operation === 'saveProject' && (!previous || ['title', 'description', 'color'].some(key => previous[key] !== result[key]))) onActivity({ type: previous ? 'project.updated' : 'project.created', actor, target: { id: result.id, title: result.title } });
     onChange(snapshot()); return result;
   }
   function join(body) {
@@ -102,7 +124,10 @@ export function createRoomHandler({ store, projectId, scope = 'project', secret,
     if (!publicJoin && !equal(body.secret, secret)) throw new Error('Invitasjonskoden stemmer ikke.');
     if (typeof body.name !== 'string' || !body.name.trim() || body.name.length > 80) throw new Error('Skriv et gyldig navn.');
     const token = randomBytes(32).toString('base64url');
-    sessions.set(token, { id: randomUUID(), userId: typeof body.userId === 'string' && body.userId.length <= 100 ? body.userId : randomUUID(), name: body.name.trim(), lastSeen: Date.now(), editingItemId: null }); persistSessions();
+    const person = normalizePerson({ id: typeof body.userId === 'string' && body.userId.trim() && body.userId.length <= 100 ? body.userId : randomUUID(), name: body.name.trim(), avatar: body.avatar });
+    sessions.set(token, { id: randomUUID(), userId: person.id, name: person.name, avatar: person.avatar, lastSeen: Date.now(), presenceSeen: Date.now(), editingItemId: null });
+    rememberPerson(person, { force: true }); persistSessions();
+    onActivity({ type: 'member.joined', actor: person });
     return { token, state: snapshot(), scope, ...status() };
   }
   async function handle(req, res) {
@@ -111,10 +136,22 @@ export function createRoomHandler({ store, projectId, scope = 'project', secret,
       if (req.method === 'POST' && req.url === '/api/join') { const result = join(await readBody(req)); json(res, 200, result); onChange(snapshot()); return; }
       const token = String(req.headers.authorization || '').replace(/^Bearer /, ''), session = sessions.get(token);
       if (!session || Date.now() - session.lastSeen > 8 * 3600000) { sessions.delete(token); json(res, 401, { error: 'Tilkoblingen er utløpt. Bli med i gruppen igjen.' }); return; }
-      session.lastSeen = Date.now();
+      session.lastSeen = session.presenceSeen = Date.now(); rememberPerson(personFor(session));
       if (req.method === 'GET' && req.url === '/api/state') { json(res, 200, { ...snapshot(), ...status() }); return; }
-      if (req.method === 'POST' && req.url === '/api/leave') { sessions.delete(token); persistSessions(); json(res, 200, { ok: true }); onChange(snapshot()); return; }
-      if (req.method === 'POST' && req.url === '/api/mutate') { const body = await readBody(req); const result = mutate(body.operation, body.input, session.name); json(res, 200, { result, state: snapshot(), ...status() }); return; }
+      if (req.method === 'POST' && req.url === '/api/pause') {
+        session.presenceSeen = 0; session.editingItemId = null; persistSessions();
+        json(res, 200, { ok: true, ...status() }); onChange(snapshot()); return;
+      }
+      if (req.method === 'POST' && req.url === '/api/profile') {
+        const input = await readBody(req), person = normalizePerson({ id: session.userId || session.id, name: input.name, avatar: input.avatar });
+        const previous = personFor(session);
+        session.name = person.name; session.avatar = person.avatar;
+        rememberPerson(person, { force: true }); persistSessions();
+        if (JSON.stringify(previous) !== JSON.stringify(person)) onActivity({ type: 'profile.updated', actor: person });
+        json(res, 200, { ok: true, ...status() }); onChange(snapshot()); return;
+      }
+      if (req.method === 'POST' && req.url === '/api/leave') { sessions.delete(token); persistSessions(); onActivity({ type: 'member.left', actor: personFor(session) }); json(res, 200, { ok: true }); onChange(snapshot()); return; }
+      if (req.method === 'POST' && req.url === '/api/mutate') { const body = await readBody(req); const result = mutate(body.operation, body.input, session.name, personFor(session)); json(res, 200, { result, state: snapshot(), ...status() }); return; }
       if (req.method === 'POST' && ['/api/files/open', '/api/files/update', '/api/files/close'].includes(req.url)) {
         const body = await readBody(req);
         const result = req.url.endsWith('/open') ? openFile(body, session) : req.url.endsWith('/update') ? updateFile(body, session) : closeFile(body, session);
@@ -123,7 +160,7 @@ export function createRoomHandler({ store, projectId, scope = 'project', secret,
       json(res, 404, { error: 'Denne forespørselen støttes ikke.' });
     } catch (error) { if (!res.headersSent) json(res, /Invitasjonskoden/.test(error.message) ? 403 : 400, { error: error.message }); else res.destroy(); }
   }
-  return { handle, status, mutate, openFile, updateFile, closeFile, join, close: () => { persistSessions(); collaboration.close(); } };
+  return { handle, status, mutate, openFile, updateFile, closeFile, join, close: () => { persistSessions(); persistRoster(); collaboration.close(); } };
 }
 
 export function createSyncService({ store, onChange = () => {}, onCollaboration = () => {}, ca, allowLoopbackHttp = false, listenHost = '0.0.0.0' }) {
@@ -131,10 +168,18 @@ export function createSyncService({ store, onChange = () => {}, onCollaboration 
   let server = null, host = null, room = null, client = null, poll = null, remote = null, polling = false, problem = '';
   const localFiles = createFileCollaboration({ store });
   const activeFiles = new Map();
-  const status = () => client ? { mode: 'client', scope: client.scope || 'project', public: Boolean(client.public), isPublic: Boolean(client.public), projectId: client.scope === 'brain' ? undefined : remote?.projects[0]?.id, url: client.origin, inviteCode: client.inviteCode, transport: client.fingerprint ? 'local' : 'internet', connected: !problem, error: problem, members: remote?.members || [], memberCount: remote?.memberCount || 1 } : host ? { mode: 'host', scope: host.scope, isPublic: false, projectId: host.projectId, urls: host.urls, inviteCode: host.inviteCode, transport: 'local', ...room.status() } : { mode: 'local', isPublic: false, members: [], memberCount: 1 };
+  const profile = () => normalizePerson(store.getMeta('user'));
+  const cachedRoster = () => store.getMeta('sync:roster')?.roster || store.getMeta('room:roster:brain') || [];
+  const onlineMembers = () => problem ? [] : (remote?.members || []).filter(member => Number.isFinite(member.lastSeen) && Date.now() - member.lastSeen < 15000);
+  const status = () => client ? { mode: 'client', scope: client.scope || 'project', public: Boolean(client.public), isPublic: Boolean(client.public), projectId: client.scope === 'brain' ? undefined : remote?.projects[0]?.id, url: client.origin, inviteCode: client.inviteCode, transport: client.fingerprint ? 'local' : 'internet', connected: !problem, error: problem, members: onlineMembers(), memberCount: onlineMembers().length, roster: remote?.roster || [] } : host ? { mode: 'host', scope: host.scope, isPublic: false, projectId: host.projectId, urls: host.urls, inviteCode: host.inviteCode, transport: 'local', ...room.status() } : { mode: 'local', isPublic: false, members: [], memberCount: 1, roster: cachedRoster() };
   const state = () => { const result = client && remote ? remote : store.snapshot(); return { ...result, items: result.items.map(item => ({ ...item, originalAvailable: Boolean(store.getMeta(`original:${item.id}`)) })), flashcards: result.flashcards.map(card => store.personalCard(card)), user: store.getMeta('user'), sync: status() }; };
   // Session credentials stay in this Brain's own database, never in an exported Brain.
-  const rememberConnection = () => { if (client && remote) store.setMeta('sync:client', { version: 1, connection: client, state: remote }); };
+  const rememberConnection = () => {
+    if (client && remote) {
+      store.setMeta('sync:client', { version: 1, connection: client, state: remote });
+      if (client.scope === 'brain' && Array.isArray(remote.roster)) store.setMeta('sync:roster', { origin: client.origin, roster: remote.roster });
+    }
+  };
   const notify = () => onChange(state());
   const request = (connection, route, options) => transportRequest(connection.origin, route, { ...options, token: connection.token, fingerprint: connection.fingerprint, ca, allowLoopbackHttp });
   function clientKey(id, connection = client) { return `collaboration-client:${createHash('sha256').update(connection.origin).digest('hex')}:${id}`; }
@@ -176,6 +221,7 @@ export function createSyncService({ store, onChange = () => {}, onCollaboration 
     const connection = client;
     try {
       if (connection) {
+        if (JSON.stringify(connection.profile) !== JSON.stringify(profile())) await service.updateProfile();
         const updated = await request(connection, '/api/state');
         if (client !== connection) return;
         remote = updated;
@@ -189,9 +235,34 @@ export function createSyncService({ store, onChange = () => {}, onCollaboration 
   };
   function startPoll() { if (!poll) { poll = setInterval(refresh, 1000); poll.unref(); } }
   function clearFiles() { for (const value of activeFiles.values()) value.model?.destroy(); activeFiles.clear(); }
-  async function attachClient(connection, joined) { client = { ...connection, scope: joined.scope || joined.state?.scope || 'project' }; remote = joined.state; remote.members = joined.members || []; remote.memberCount = joined.memberCount || 1; problem = ''; rememberConnection(); startPoll(); notify(); return status(); }
+  async function attachClient(connection, joined) { client = { ...connection, scope: joined.scope || joined.state?.scope || 'project', profile: profile() }; remote = joined.state; remote.members = joined.members || []; remote.memberCount = joined.memberCount || 0; remote.roster = joined.roster || []; problem = ''; rememberConnection(); startPoll(); notify(); return status(); }
   const service = {
     status, state, refresh,
+    async updateProfile() {
+      const person = profile(), connection = client;
+      if (connection) {
+        try {
+          if (connection.profileUnsupported) { connection.profile = person; rememberConnection(); return status(); }
+          const updated = await request(connection, '/api/profile', { method: 'POST', data: { name: person.name, avatar: person.avatar } });
+          if (client !== connection) return status();
+          connection.profile = person;
+          if (remote) { remote.members = updated.members || []; remote.roster = updated.roster || remote.roster || []; remote.memberCount = updated.memberCount || 0; }
+          rememberConnection(); problem = '';
+        } catch (error) {
+          if (client === connection) {
+            if (error.statusCode === 404) { connection.profileUnsupported = true; connection.profile = person; rememberConnection(); }
+            else problem = error.message;
+          }
+        }
+      } else if (host) room.status();
+      else {
+        const replaceOwn = roster => roster.map(member => member.id === person.id || member.userId === person.id ? { ...member, ...person, userId: person.id } : member);
+        const local = store.getMeta('room:roster:brain'), cached = store.getMeta('sync:roster');
+        if (Array.isArray(local)) store.setMeta('room:roster:brain', replaceOwn(local));
+        if (Array.isArray(cached?.roster)) store.setMeta('sync:roster', { ...cached, roster: replaceOwn(cached.roster) });
+      }
+      notify(); return status();
+    },
     async startHosting({ projectId, scope = 'project' }) {
       if (client) throw new Error('Forlat gruppen før du blir vert.');
       if (host) return status();
@@ -214,14 +285,15 @@ export function createSyncService({ store, onChange = () => {}, onCollaboration 
       server = null; host = null; room?.close(); room = null; clearFiles();
       if (!client && poll) { clearInterval(poll); poll = null; } notify(); return status();
     },
-    async startInternetRoom({ url, projectId, createKey, scope = 'project' }) {
+    async startInternetRoom({ url, projectId, createKey, scope = 'project', name }) {
       if (host || client) throw new Error('Forlat den aktive gruppen før du oppretter en ny.');
       const origin = groupUrl(url, { allowLoopbackHttp });
       if (new URL(origin).pathname !== '/') throw new Error('Bruk serverens hovedadresse.');
       if (typeof createKey !== 'string' || createKey.length < 24 || createKey.length > 500) throw new Error('Oppgi serverens opprettingsnøkkel med minst 24 tegn.');
       if (!['project', 'brain'].includes(scope)) throw new Error('Ugyldig delingsområde.');
+      if (name !== undefined && (typeof name !== 'string' || !name.trim() || name.length > 80)) throw new Error('Gi Brainen et navn på opptil 80 tegn.');
       const payload = scope === 'brain' ? { scope, brain: exportBrain(store) } : { project: store.exportProject(projectId) };
-      const created = await transportRequest(origin, '/api/rooms', { method: 'POST', token: createKey, data: { ...payload, user: store.getMeta('user') }, ca, allowLoopbackHttp });
+      const created = await transportRequest(origin, '/api/rooms', { method: 'POST', token: createKey, data: { ...payload, ...(name !== undefined ? { name: name.trim() } : {}), user: store.getMeta('user') }, ca, allowLoopbackHttp });
       const roomUrl = groupUrl(created.roomUrl || created.url, { allowLoopbackHttp });
       if (new URL(roomUrl).origin !== new URL(origin).origin) throw new Error('Serveren returnerte en annen adresse.');
       return attachClient({ origin: roomUrl, token: created.token, inviteCode: created.inviteCode }, created);
@@ -231,7 +303,7 @@ export function createSyncService({ store, onChange = () => {}, onCollaboration 
       const origin = groupUrl(url, { allowLoopbackHttp });
       if (new URL(origin).pathname !== '/') throw new Error('Bruk serverens hovedadresse.');
       const connection = { origin: `${origin}/api/public-brain`, public: true, scope: 'brain' };
-      const joined = await request(connection, '/api/join', { method: 'POST', data: { name: store.getMeta('user').name, userId: store.getMeta('user').id } });
+      const joined = await request(connection, '/api/join', { method: 'POST', data: { name: profile().name, userId: profile().id, avatar: profile().avatar } });
       connection.token = joined.token;
       return attachClient(connection, joined);
     },
@@ -243,7 +315,7 @@ export function createSyncService({ store, onChange = () => {}, onCollaboration 
       if (!/^[\w-]{43}$/.test(code.secret) || ![1, 2].includes(code.version) || (code.version === 1 && (!/^[a-f0-9]{64}$/.test(code.fingerprint) || !inviteCode.startsWith('S1.'))) || (code.version === 2 && !inviteCode.startsWith('S2.'))) throw new Error('Ugyldig invitasjonskode.');
       if (code.version === 2 && (!code.url || groupUrl(code.url, { allowLoopbackHttp }) !== origin)) throw new Error('Adressen stemmer ikke med internettinvitasjonen.');
       const connection = { origin, fingerprint: code.version === 1 ? code.fingerprint : undefined, inviteCode };
-      const joined = await request(connection, '/api/join', { method: 'POST', data: { secret: code.secret, name: store.getMeta('user').name, userId: store.getMeta('user').id } });
+      const joined = await request(connection, '/api/join', { method: 'POST', data: { secret: code.secret, name: profile().name, userId: profile().id, avatar: profile().avatar } });
       connection.token = joined.token; return attachClient(connection, joined);
     },
     async leaveGroup({ preserveClient = false } = {}) {
@@ -259,6 +331,12 @@ export function createSyncService({ store, onChange = () => {}, onCollaboration 
       if (poll) clearInterval(poll); poll = null;
       if (pendingRefresh) await pendingRefresh;
       for (const id of [...activeFiles.keys()]) await service.closeSharedFile({ id });
+      if (client) {
+        try {
+          const paused = await request(client, '/api/pause', { method: 'POST', data: {} });
+          if (remote) { remote.members = paused.members || []; remote.roster = paused.roster || remote.roster || []; }
+        } catch { /* Older or offline servers keep the durable session; presence expires naturally. */ }
+      }
       rememberConnection();
     },
     resume() { if (client || host) startPoll(); return status(); },
@@ -288,7 +366,7 @@ export function createSyncService({ store, onChange = () => {}, onCollaboration 
         try { const result = await sendFile(input.id, value); problem = ''; notify(); return result; }
         catch (error) { if (error.statusCode === 400 || error.statusCode === 403) throw error; problem = error.message; notify(); return { id: input.id, item: value.model.read(value.item), update: value.model.encode(input.stateVector), members: [], active: true, pending: true, error: problem }; }
       }
-      const result = host && (host.scope === 'brain' || store.get('item', input.id)?.projectId === host.projectId) ? room.updateFile(input) : { ...localFiles.update(input, store.getMeta('user').name), members: [], active: false };
+      const result = host && (host.scope === 'brain' || store.get('item', input.id)?.projectId === host.projectId) ? room.updateFile(input) : { ...localFiles.update(input, profile().name, profile()), members: [], active: false };
       notify(); return result;
     },
     async closeSharedFile({ id }) {
@@ -302,9 +380,9 @@ export function createSyncService({ store, onChange = () => {}, onCollaboration 
         const connection = client;
         const response = await request(connection, '/api/mutate', { method: 'POST', data: { operation, input } });
         if (client !== connection) throw new Error('Gruppen ble byttet mens endringen ble lagret.');
-        remote = { ...response.state, members: response.members, memberCount: response.memberCount }; problem = ''; rememberConnection(); notify(); return response.result;
+        remote = { ...response.state, members: response.members, memberCount: response.memberCount, roster: response.roster || remote?.roster || [] }; problem = ''; rememberConnection(); notify(); return response.result;
       }
-      const result = host && (host.scope === 'brain' || input.projectId === host.projectId || input.id && store.get('item', input.id)?.projectId === host.projectId) ? room.mutate(operation, input) : mutateStore(store, operation, input, { author: store.getMeta('user').name });
+      const result = host && (host.scope === 'brain' || input.projectId === host.projectId || input.id && store.get('item', input.id)?.projectId === host.projectId) ? room.mutate(operation, input) : mutateStore(store, operation, input, { author: profile().name, actor: profile() });
       if (operation === 'saveItem') localFiles.reconcile(result); notify(); return result;
     }
   };

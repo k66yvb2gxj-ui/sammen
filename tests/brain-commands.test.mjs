@@ -153,7 +153,7 @@ test('whole-Brain hosting and internet creation refuse personal and public works
   await commands.startBrainHosting();
   assert.deepEqual(context.hostCalls, [{ scope: 'brain' }]);
   await commands.startInternetBrain(input);
-  assert.deepEqual(context.internetCalls, [{ ...input, scope: 'brain' }]);
+  assert.deepEqual(context.internetCalls, [{ ...input, scope: 'brain', name: 'Inviterte' }]);
 });
 
 test('failed invitation joining keeps old personal content, catalog entries and private metadata', async t => {

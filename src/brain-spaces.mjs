@@ -3,6 +3,7 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { Store } from './store.mjs';
 import { createSyncService } from './sync.mjs';
+import { normalizePerson } from './people.mjs';
 
 const catalogKey = 'brainSpaces:v1';
 const uuid = /^[a-f\d]{8}-[a-f\d]{4}-[a-f\d]{4}-[a-f\d]{4}-[a-f\d]{12}$/i;
@@ -53,20 +54,42 @@ export function createBrainSpaces({ baseStore, directory, createStore = (filenam
     const context = { record, store, sync: null, files: new Set(), pending: new Set() };
     try {
       context.sync = createSync({ ...syncOptions, store,
-        onChange: () => { if (!closed && !closing && !transition && !paused && context === active) onChange(state()); },
+        onChange: () => { if (!closed && !closing) cacheMembers(context); if (!closed && !closing && !transition && !paused && context === active) onChange(state()); },
         onCollaboration: value => { if (!closed && !closing && !transition && !paused && context === active) onCollaboration(value); }
       });
     } catch (error) { if (store !== baseStore) store.close(); throw error; }
     contexts.set(record.id, context);
+    cacheMembers(context);
     return context;
+  }
+  function safeMember(value) {
+    try {
+      const person = normalizePerson(value), own = normalizePerson(baseStore.getMeta('user'));
+      return { ...(person.id === own.id ? own : person), userId: person.id, ...(typeof value.joinedAt === 'string' ? { joinedAt: value.joinedAt } : {}), ...(typeof value.lastSeen === 'string' ? { lastSeen: value.lastSeen } : {}) };
+    } catch { return null; }
+  }
+  function storedRoster(record) {
+    const value = baseStore.getMeta(`brainMembers:${record.id}`);
+    return Array.isArray(value) ? value : [];
+  }
+  function cacheMembers(context) {
+    if (context.record.id === 'personal' || !context.sync) return;
+    const roster = context.sync.status().roster;
+    if (!Array.isArray(roster)) return;
+    const members = roster.map(safeMember).filter(Boolean), key = `brainMembers:${context.record.id}`;
+    if (JSON.stringify(baseStore.getMeta(key)) !== JSON.stringify(members)) baseStore.setMeta(key, members);
   }
   function summary(record) {
     const connection = contexts.get(record.id)?.sync.status() || { mode: 'local' };
-    return { ...record, isPersonal: record.id === 'personal', isPublic: record.id === 'public', connection: {
+    const own = safeMember(baseStore.getMeta('user'));
+    const roster = record.id === 'personal' ? [own] : connection.roster || storedRoster(record);
+    const members = roster.map(safeMember).filter(Boolean);
+    const onlineMembers = record.id !== 'personal' && connection.mode !== 'local' && connection.connected !== false && !connection.error ? (connection.members || []).map(safeMember).filter(Boolean) : [];
+    return { ...record, isPersonal: record.id === 'personal', isPublic: record.id === 'public', members, onlineMembers, connection: {
       mode: ['host', 'client'].includes(connection.mode) ? connection.mode : 'local',
       connected: connection.mode === 'host' || (connection.mode === 'client' && connection.connected !== false),
       transport: ['local', 'internet'].includes(connection.transport) ? connection.transport : null,
-      memberCount: Number.isSafeInteger(connection.memberCount) && connection.memberCount > 0 ? connection.memberCount : 1
+      memberCount: onlineMembers.length
     } };
   }
   function catalog() { assertOpen(); return { activeId, brains: records.map(summary) }; }
@@ -117,7 +140,9 @@ export function createBrainSpaces({ baseStore, directory, createStore = (filenam
       if (input?.visibility !== undefined && input.visibility !== 'invited') throw new Error('Nye Brains deles bare med inviterte.');
       if (records.length >= 100) throw new Error('Du kan ha opptil 100 Brains på denne PC-en.');
       const record = { id: randomUUID(), name, visibility: 'invited' };
-      contextFor(record);
+      const created = contextFor(record), person = normalizePerson(baseStore.getMeta('user')), now = new Date().toISOString();
+      created.store.setMeta('room:roster:brain', [{ ...person, userId: person.id, joinedAt: now, lastSeen: now }]);
+      cacheMembers(created);
       records = [...records, record];
       try { persist(); } catch (error) {
         records = records.filter(brain => brain.id !== record.id);
@@ -138,6 +163,15 @@ export function createBrainSpaces({ baseStore, directory, createStore = (filenam
         baseStore.saveProfile(input);
         const user = baseStore.getMeta('user');
         for (const context of contexts.values()) if (context.store !== baseStore) context.store.setMeta('user', user);
+        const updates = [];
+        for (const context of contexts.values()) {
+          if (typeof context.sync.updateProfile !== 'function') continue;
+          const pending = Promise.resolve().then(() => context.sync.updateProfile());
+          context.pending.add(pending);
+          pending.then(() => context.pending.delete(pending), () => context.pending.delete(pending));
+          updates.push(pending);
+        }
+        return Promise.allSettled(updates).then(() => user);
       };
       if (property === 'close') return close;
       if (property === 'getMeta') return key => key === 'user' ? baseStore.getMeta('user') : active.store.getMeta(key);
