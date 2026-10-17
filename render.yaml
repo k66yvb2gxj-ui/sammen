@@ -1,0 +1,30 @@
+# Paid service: review the price and connect the owner's Render account before creating it.
+previews:
+  generation: 'off'
+
+services:
+  - type: web
+    name: sammen-brain
+    runtime: docker
+    plan: 0.5c-512mb
+    region: frankfurt
+    dockerfilePath: ./server/Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    autoDeployTrigger: 'off'
+    numInstances: 1
+    disk:
+      name: sammen-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: SAMMEN_DATA_DIR
+        value: /var/data/sammen
+      - key: SAMMEN_BIND
+        value: 0.0.0.0
+      - key: SAMMEN_CREATE_KEY
+        generateValue: true
+      - key: SAMMEN_PUBLIC_BRAIN
+        value: '0'
+      - key: SAMMEN_ADMIN_KEY
+        value: ''

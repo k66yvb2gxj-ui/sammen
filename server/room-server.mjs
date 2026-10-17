@@ -219,7 +219,7 @@ export async function createInternetServer({ directory, publicOrigin, createKey,
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const service = await createInternetServer({ directory: process.env.SAMMEN_DATA_DIR || './server-data', publicOrigin: process.env.SAMMEN_PUBLIC_ORIGIN, createKey: process.env.SAMMEN_CREATE_KEY, maxRooms: Number(process.env.SAMMEN_MAX_ROOMS) || 100, publicBrain: process.env.SAMMEN_PUBLIC_BRAIN === '1', adminKey: process.env.SAMMEN_ADMIN_KEY });
+  const service = await createInternetServer({ directory: process.env.SAMMEN_DATA_DIR || './server-data', publicOrigin: process.env.SAMMEN_PUBLIC_ORIGIN || process.env.RENDER_EXTERNAL_URL, createKey: process.env.SAMMEN_CREATE_KEY, maxRooms: Number(process.env.SAMMEN_MAX_ROOMS) || 100, publicBrain: process.env.SAMMEN_PUBLIC_BRAIN === '1', adminKey: process.env.SAMMEN_ADMIN_KEY });
   await service.listen({ host: process.env.SAMMEN_BIND || '127.0.0.1', port: Number(process.env.PORT) || 8787 });
   console.log('Sammen fellesromserver er klar.');
   for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, async () => { await service.close(); process.exit(0); });
