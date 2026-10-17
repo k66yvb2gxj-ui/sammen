@@ -4,6 +4,8 @@ Denne serveren lagrer delte prosjekter og Yjs-dokumenter i SQLite på en varig d
 
 ## Publisering
 
+For én fast server med tildelt HTTPS-adresse uten eget domenekjøp, se [Render-oppsettet](RENDER.md) og [`render.yaml`](../render.yaml). Det krever eierens Render-konto og godkjenning av en betalt tjeneste. Oppsettet nedenfor er alternativet for egen server med Docker Compose.
+
 Bruk en server eller containerplattform med varig disk. Domenet må peke til serveren. Docker Compose-pakken bruker Caddy til HTTPS og automatisk sertifikatfornyelse. Port 80 og 443 må kunne nås på serversiden.
 
 1. Kopier `.env.example` til `.env` i denne mappen.
